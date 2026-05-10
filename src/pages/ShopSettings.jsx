@@ -27,6 +27,7 @@ function ShopSettings() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [uploadingLogo, setUploadingLogo] = useState(false)
+  const [logoProgress, setLogoProgress] = useState(0)
 
   useEffect(() => {
     if (!currentUser?.uid) return undefined
@@ -65,13 +66,15 @@ function ShopSettings() {
     if (!file) return
     try {
       setUploadingLogo(true)
-      const logoURL = await uploadShopLogo(currentUser.uid, file)
+      setLogoProgress(0)
+      const logoURL = await uploadShopLogo(currentUser.uid, file, setLogoProgress)
       setForm((current) => ({ ...current, logoURL }))
       toast.success("Logo uploaded.")
     } catch (error) {
       toast.error(error.message || "Could not upload logo.")
     } finally {
       setUploadingLogo(false)
+      setLogoProgress(0)
       event.target.value = ""
     }
   }
@@ -146,7 +149,7 @@ function ShopSettings() {
               </button>
               {form.logoURL && <button className="h-10 rounded-md border border-slate-300 px-4 text-sm font-semibold text-slate-700" type="button" onClick={removeLogo} disabled={uploadingLogo}>Remove Logo</button>}
             </div>
-            {uploadingLogo && <p className="text-sm text-slate-500">Uploading...</p>}
+            {uploadingLogo && <div className="space-y-2"><p className="text-sm text-slate-500">Uploading{logoProgress ? ` ${logoProgress}%` : "..."}</p><div className="h-2 w-44 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-[#1D9E75] transition-all" style={{ width: `${Math.max(8, logoProgress)}%` }} /></div></div>}
           </div>
         </div>
       </div>
@@ -173,3 +176,4 @@ function Field({ label, name, value, onChange, type = "text", disabled }) {
 }
 
 export default ShopSettings
+
