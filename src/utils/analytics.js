@@ -94,6 +94,15 @@ export function exportToCSV(orders) {
     "PaymentStatus",
     "Notes",
     "ParsedBy",
+    "ProductRevenue",
+    "DeliveryRevenue",
+    "GrossRevenue",
+    "TotalCost",
+    "GrossProfit",
+    "ProfitMargin",
+    "PaymentType",
+    "OnlineAmount",
+    "CODAmount",
   ]
   const rows = orders.map((o) => [
     o.orderNumber || "",
@@ -112,6 +121,15 @@ export function exportToCSV(orders) {
     o.paymentStatus || "",
     (o.notes || "").replace(/,/g, " "),
     o.parsedBy || "",
+    o.productRevenue || o.subtotal || 0,
+    o.deliveryRevenue || o.deliveryCharge || 0,
+    o.grossRevenue || o.grandTotal || 0,
+    o.totalCost || 0,
+    o.grossProfit || 0,
+    o.profitMargin || "",
+    o.paymentType || "",
+    o.onlineAmount || 0,
+    o.codAmount || 0,
   ])
   const csvContent = [headers, ...rows].map((row) => row.join(",")).join("\n")
   const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" })
@@ -125,3 +143,40 @@ export function exportToCSV(orders) {
 export function getOrderDateValue(order) {
   return getOrderDate(order)
 }
+
+export function getRevenueBreakdown(orders) {
+  return orders.reduce((acc, order) => {
+    acc.grossRevenue += order.grossRevenue || order.grandTotal || 0
+    acc.productRevenue += order.productRevenue || order.subtotal || 0
+    acc.deliveryRevenue += order.deliveryRevenue || order.deliveryCharge || 0
+    acc.totalCost += order.totalCost || 0
+    acc.grossProfit += order.grossProfit || 0
+    acc.onlineCollected += order.onlineAmount || 0
+    acc.codPending += (order.paymentType === "full_cod" || order.paymentType === "delivery_only_online") ? order.codAmount || 0 : 0
+    return acc
+  }, { grossRevenue: 0, productRevenue: 0, deliveryRevenue: 0, totalCost: 0, grossProfit: 0, onlineCollected: 0, codPending: 0 })
+}
+
+export function getProfitByProduct(orders) {
+  const productMap = {}
+  orders.forEach((order) => {
+    ;(order.products || []).forEach((p) => {
+      if (!productMap[p.productName]) productMap[p.productName] = { name: p.productName, unitsSold: 0, revenue: 0, cost: 0, profit: 0, margin: 0 }
+      const revenue = p.totalPrice || 0
+      const cost = (p.costPrice || 0) * (p.quantity || 1)
+      productMap[p.productName].unitsSold += p.quantity || 0
+      productMap[p.productName].revenue += revenue
+      productMap[p.productName].cost += cost
+      productMap[p.productName].profit += revenue - cost
+    })
+  })
+  return Object.values(productMap).map((p) => ({ ...p, margin: p.revenue > 0 ? ((p.profit / p.revenue) * 100).toFixed(1) : 0 })).sort((a, b) => b.profit - a.profit)
+}
+
+export function getCollectionSummary(orders) {
+  const collected = orders.filter((o) => o.paymentStatus === "Paid" || o.productPaymentStatus === "Paid").reduce((sum, o) => sum + (o.grandTotal || 0), 0)
+  const onlineReceived = orders.reduce((sum, o) => sum + (o.onlineAmount || 0), 0)
+  const codPending = orders.filter((o) => o.paymentStatus !== "Paid" && o.productPaymentStatus !== "Paid").reduce((sum, o) => sum + (o.codAmount || 0), 0)
+  return { collected, onlineReceived, codPending }
+}
+

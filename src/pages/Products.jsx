@@ -19,6 +19,7 @@ const initialForm = {
   name: "",
   banglaName: "",
   price: "",
+  costPrice: "",
   variants: "",
   tags: "",
   stock: "",
@@ -97,6 +98,7 @@ function Products() {
       name: product.name || "",
       banglaName: product.banglaName || "",
       price: String(product.price ?? ""),
+      costPrice: String(product.costPrice ?? ""),
       variants: (product.variants || []).join(", "),
       tags: (product.tags || []).join(", "),
       stock: String(product.stock ?? ""),
@@ -126,9 +128,15 @@ function Products() {
     const banglaName = formData.banglaName.trim()
     const price = Number(formData.price)
     const stock = Number(formData.stock)
+    const costPrice = Number(formData.costPrice || 0)
 
     if (!name || !banglaName) {
       toast.error("Enter both English and Bangla product names.")
+      return
+    }
+
+    if (!Number.isFinite(costPrice) || costPrice < 0) {
+      toast.error("Enter a valid product cost price.")
       return
     }
 
@@ -146,6 +154,7 @@ function Products() {
       name,
       banglaName,
       price,
+      costPrice,
       variants: splitCommaList(formData.variants),
       tags: splitCommaList(formData.tags),
       stock,
@@ -297,9 +306,7 @@ function ProductCard({ product, onEdit, onDelete }) {
               {product.banglaName}
             </p>
           </div>
-          <span className="shrink-0 rounded-md bg-slate-100 px-2.5 py-1 text-sm font-semibold text-slate-700">
-            {"\u09f3"}{product.price ?? 0}
-          </span>
+          <div className="shrink-0 text-right"><span className="rounded-md bg-slate-100 px-2.5 py-1 text-sm font-semibold text-slate-700">{"\u09f3"}{product.price ?? 0}</span><p className="mt-2 text-xs text-slate-500">Cost {"\u09f3"}{product.costPrice ?? 0}</p></div>
         </div>
 
         <div className="mt-5 space-y-4 text-sm">
@@ -393,11 +400,21 @@ function ProductModal({ formData, isEditing, saving, onChange, onClose, onSave }
               disabled={saving}
             />
             <Field
-              label={<>Price ({"\u09f3"})</>}
+              label={<>Selling Price ({"\u09f3"})</>}
               name="price"
               value={formData.price}
               onChange={onChange}
               placeholder="500"
+              type="number"
+              min="0"
+              disabled={saving}
+            />
+            <Field
+              label={<>Cost Price ({"\u09f3"})</>}
+              name="costPrice"
+              value={formData.costPrice}
+              onChange={onChange}
+              placeholder="300"
               type="number"
               min="0"
               disabled={saving}
@@ -414,6 +431,8 @@ function ProductModal({ formData, isEditing, saving, onChange, onClose, onSave }
               disabled={saving}
             />
           </div>
+
+          <ProfitPreview price={formData.price} costPrice={formData.costPrice} />
 
           <Field
             label="Variants (comma separated)"
@@ -455,6 +474,14 @@ function ProductModal({ formData, isEditing, saving, onChange, onClose, onSave }
   )
 }
 
+function ProfitPreview({ price, costPrice }) {
+  const selling = Number(price || 0)
+  const cost = Number(costPrice || 0)
+  const profit = selling - cost
+  const margin = selling > 0 ? ((profit / selling) * 100).toFixed(1) : "0.0"
+  return <p className={`rounded-md px-3 py-2 text-sm font-semibold ${profit >= 0 ? "bg-emerald-50 text-emerald-800" : "bg-red-50 text-red-800"}`}>Profit per unit: ৳{profit || 0} ({margin}%)</p>
+}
+
 function Field({ label, name, value, onChange, type = "text", ...props }) {
   return (
     <label className="block">
@@ -479,3 +506,4 @@ function splitCommaList(value) {
 }
 
 export default Products
+

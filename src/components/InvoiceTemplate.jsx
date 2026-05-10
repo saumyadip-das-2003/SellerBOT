@@ -8,6 +8,16 @@ function money(value) {
   return `৳${Number(value || 0).toFixed(0)}`
 }
 
+function PaymentInfo({ order }) {
+  if (order.paymentType === "delivery_only_online") {
+    return <><p>Delivery Charge: {money(order.deliveryRevenue || order.deliveryCharge)} — Paid via {order.deliveryPaymentMethod || "bKash"} {order.deliveryPaymentStatus === "Paid" ? "OK" : "Pending"}</p><p>Delivery Transaction: {order.deliveryTransactionId || ""}</p><p>Product Amount: {money(order.productRevenue || order.subtotal)} — Cash on Delivery</p></>
+  }
+  if (order.paymentType === "full_online") {
+    return <><p>Total Paid: {money(order.grossRevenue || order.grandTotal)} via {order.productPaymentMethod || order.paymentMethod || "bKash"}</p><p>Transaction: {order.productTransactionId || order.transactionId || ""}</p></>
+  }
+  return <p>Amount to Pay on Delivery: {money(order.grossRevenue || order.grandTotal)}</p>
+}
+
 const InvoiceTemplate = forwardRef(function InvoiceTemplate({ order, shop }, ref) {
   const orderNumber = order.orderNumber || `SB-${String(Date.now()).slice(-8)}`
 
@@ -70,8 +80,7 @@ const InvoiceTemplate = forwardRef(function InvoiceTemplate({ order, shop }, ref
         </section>
 
         <section className="border-b border-black p-5">
-          <p>Payment: {order.paymentMethod || "COD"} Status: {order.paymentStatus || "Unpaid"}</p>
-          <p>Transaction ID: {order.transactionId || ""}</p>
+          <PaymentInfo order={order} />
         </section>
 
         {order.notes && <section className="border-b border-black p-5"><p className="whitespace-pre-wrap">Notes: {order.notes}</p></section>}
@@ -86,3 +95,4 @@ const InvoiceTemplate = forwardRef(function InvoiceTemplate({ order, shop }, ref
 })
 
 export default InvoiceTemplate
+

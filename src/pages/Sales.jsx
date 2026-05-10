@@ -1,18 +1,18 @@
 ﻿import { useEffect, useMemo, useRef, useState } from "react"
-import { deleteDoc, doc, getDoc, onSnapshot, collection, orderBy, query, updateDoc } from "firebase/firestore"
+import { collection, deleteDoc, doc, getDoc, onSnapshot, orderBy, query, updateDoc } from "firebase/firestore"
 import html2canvas from "html2canvas"
 import jsPDF from "jspdf"
-import { Eye, FileDown, ImageDown, Plus, Printer, Trash2, X } from "lucide-react"
+import { Eye, FileDown, Printer, Trash2, X } from "lucide-react"
 import toast from "react-hot-toast"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import InvoiceTemplate from "../components/InvoiceTemplate.jsx"
 import { useAuth } from "../context/AuthContext.jsx"
 import { db } from "../firebase/config.js"
-import { exportToCSV, getOrderDateValue } from "../utils/analytics.js"
+import { exportToCSV, getOrderDateValue, getRevenueBreakdown } from "../utils/analytics.js"
 
 const pageSize = 20
-const paymentStatuses = ["All", "Paid", "Unpaid", "Partial"]
-const paymentMethods = ["All", "COD", "bKash", "Nagad", "Rocket", "Other"]
+const paymentTypes = ["All", "Full Online", "Delivery Online", "Full COD"]
+const typeMap = { "Full Online": "full_online", "Delivery Online": "delivery_only_online", "Full COD": "full_cod" }
 
 function Sales() {
   const { currentUser } = useAuth()
@@ -21,146 +21,52 @@ function Sales() {
   const invoiceRef = useRef(null)
   const [orders, setOrders] = useState([])
   const [shop, setShop] = useState(null)
-  const [loading, setLoading] = useState(true)
   const [selectedOrder, setSelectedOrder] = useState(null)
   const [invoiceOrder, setInvoiceOrder] = useState(null)
   const [page, setPage] = useState(1)
-  const [filters, setFilters] = useState({ from: "", to: "", status: searchParams.get("status") || "All", method: "All", search: "" })
+  const [filters, setFilters] = useState({ from: "", to: "", status: searchParams.get("status") || "All", method: "All", paymentType: "All", search: "" })
 
   useEffect(() => {
     if (!currentUser?.uid) return undefined
-    const ordersQuery = query(collection(db, "users", currentUser.uid, "orders"), orderBy("createdAt", "desc"))
-    const unsubscribe = onSnapshot(
-      ordersQuery,
-      (snapshot) => {
-        setOrders(snapshot.docs.map((orderDoc) => ({ id: orderDoc.id, ...orderDoc.data() })))
-        setLoading(false)
-      },
-      (error) => {
-        toast.error(error.message || "Could not load sales.")
-        setLoading(false)
-      },
-    )
+    const unsubscribe = onSnapshot(query(collection(db, "users", currentUser.uid, "orders"), orderBy("createdAt", "desc")), (snapshot) => setOrders(snapshot.docs.map((d) => ({ id: d.id, ...d.data() }))), (error) => toast.error(error.message || "Could not load sales."))
     getDoc(doc(db, "users", currentUser.uid, "settings", "shop")).then((snap) => setShop(snap.data() || {}))
     return unsubscribe
   }, [currentUser?.uid])
 
-  const filteredOrders = useMemo(() => {
+  const filteredOrders = useMemo(() => orders.filter((order) => {
+    const date = getOrderDateValue(order)
     const search = filters.search.trim().toLowerCase()
-    return orders.filter((order) => {
-      const date = getOrderDateValue(order)
-      if (filters.from && date < new Date(`${filters.from}T00:00:00`)) return false
-      if (filters.to && date > new Date(`${filters.to}T23:59:59`)) return false
-      if (filters.status !== "All" && order.paymentStatus !== filters.status) return false
-      if (filters.method !== "All" && order.paymentMethod !== filters.method) return false
-      if (search) {
-        const haystack = [order.customerName, order.phone, order.orderNumber].join(" ").toLowerCase()
-        if (!haystack.includes(search)) return false
-      }
-      return true
-    })
-  }, [orders, filters])
-
-  const totalPages = Math.max(1, Math.ceil(filteredOrders.length / pageSize))
+    if (filters.from && date < new Date(`${filters.from}T00:00:00`)) return false
+    if (filters.to && date > new Date(`${filters.to}T23:59:59`)) return false
+    if (filters.status !== "All" && (order.paymentStatus || order.productPaymentStatus) !== filters.status) return false
+    if (filters.method !== "All" && (order.paymentMethod || order.productPaymentMethod) !== filters.method) return false
+    if (filters.paymentType !== "All" && order.paymentType !== typeMap[filters.paymentType]) return false
+    if (search && ![order.customerName, order.phone, order.orderNumber].join(" ").toLowerCase().includes(search)) return false
+    return true
+  }), [orders, filters])
+  const revenue = useMemo(() => getRevenueBreakdown(filteredOrders), [filteredOrders])
+  const margin = revenue.productRevenue ? ((revenue.grossProfit / revenue.productRevenue) * 100).toFixed(1) : "0.0"
   const start = (page - 1) * pageSize
-  const paginatedOrders = filteredOrders.slice(start, start + pageSize)
+  const paginated = filteredOrders.slice(start, start + pageSize)
+  const totalPages = Math.max(1, Math.ceil(filteredOrders.length / pageSize))
+  const updateFilter = (field, value) => { setFilters((c) => ({ ...c, [field]: value })); setPage(1) }
 
-  useEffect(() => setPage(1), [filters])
+  const deleteOrder = async (order) => { if (!window.confirm(`Delete ${order.orderNumber}?`)) return; await deleteDoc(doc(db, "users", currentUser.uid, "orders", order.id)); toast.success("Order deleted.") }
+  const markAsPaid = async (order) => { await updateDoc(doc(db, "users", currentUser.uid, "orders", order.id), { paymentStatus: "Paid", productPaymentStatus: "Paid", deliveryPaymentStatus: "Paid" }); setSelectedOrder((o) => ({ ...o, paymentStatus: "Paid", productPaymentStatus: "Paid", deliveryPaymentStatus: "Paid" })) }
+  const downloadPDF = async (order) => { setInvoiceOrder(order); await waitFrame(); const canvas = await html2canvas(invoiceRef.current, { scale: 2 }); const pdf = new jsPDF("p", "mm", "a4"); const width = pdf.internal.pageSize.getWidth(); pdf.addImage(canvas.toDataURL("image/png"), "PNG", 0, 0, width, (canvas.height * width) / canvas.width); pdf.save(`SellerBot-Invoice-${order.orderNumber}.pdf`) }
 
-  const updateFilter = (field, value) => setFilters((current) => ({ ...current, [field]: value }))
-  const clearFilters = () => setFilters({ from: "", to: "", status: "All", method: "All", search: "" })
-
-  const deleteOrder = async (order) => {
-    if (!window.confirm(`Delete ${order.orderNumber}? This cannot be undone.`)) return
-    try {
-      await deleteDoc(doc(db, "users", currentUser.uid, "orders", order.id))
-      toast.success("Order deleted.")
-    } catch (error) {
-      toast.error(error.message || "Could not delete order.")
-    }
-  }
-
-  const markAsPaid = async (order) => {
-    try {
-      await updateDoc(doc(db, "users", currentUser.uid, "orders", order.id), { paymentStatus: "Paid" })
-      setSelectedOrder((current) => ({ ...current, paymentStatus: "Paid" }))
-      toast.success("Order marked as paid.")
-    } catch (error) {
-      toast.error(error.message || "Could not update order.")
-    }
-  }
-
-  const downloadPDF = async (order = selectedOrder || invoiceOrder) => {
-    setInvoiceOrder(order)
-    await waitFrame()
-    const canvas = await html2canvas(invoiceRef.current, { scale: 2 })
-    const pdf = new jsPDF("p", "mm", "a4")
-    const pdfWidth = pdf.internal.pageSize.getWidth()
-    const pdfHeight = (canvas.height * pdfWidth) / canvas.width
-    pdf.addImage(canvas.toDataURL("image/png"), "PNG", 0, 0, pdfWidth, pdfHeight)
-    pdf.save(`SellerBot-Invoice-${order.orderNumber}.pdf`)
-  }
-
-  const downloadImage = async (order = selectedOrder || invoiceOrder) => {
-    setInvoiceOrder(order)
-    await waitFrame()
-    const canvas = await html2canvas(invoiceRef.current, { scale: 2 })
-    const link = document.createElement("a")
-    link.download = `SellerBot-Invoice-${order.orderNumber}.png`
-    link.href = canvas.toDataURL("image/png")
-    link.click()
-  }
-
-  return (
-    <section className="space-y-6">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <p className="text-sm font-semibold uppercase tracking-wide text-[#1D9E75]">Orders</p>
-          <h2 className="text-3xl font-semibold text-slate-950">Sales History</h2>
-        </div>
-        <div className="flex flex-wrap gap-3">
-          <button className="inline-flex h-10 items-center gap-2 rounded-md bg-[#1D9E75] px-4 text-sm font-semibold text-white" onClick={() => navigate("/new-order")}><Plus className="h-4 w-4" />New Order</button>
-          <button className="inline-flex h-10 items-center gap-2 rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold" onClick={() => exportToCSV(filteredOrders)}><FileDown className="h-4 w-4" />Export CSV</button>
-        </div>
-      </div>
-
-      <div className="grid gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-3 xl:grid-cols-6">
-        <Field label="From" type="date" value={filters.from} onChange={(value) => updateFilter("from", value)} />
-        <Field label="To" type="date" value={filters.to} onChange={(value) => updateFilter("to", value)} />
-        <Select label="Payment Status" value={filters.status} options={paymentStatuses} onChange={(value) => updateFilter("status", value)} />
-        <Select label="Payment Method" value={filters.method} options={paymentMethods} onChange={(value) => updateFilter("method", value)} />
-        <Field label="Search" value={filters.search} onChange={(value) => updateFilter("search", value)} placeholder="Name, phone, order #" />
-        <button className="mt-6 h-10 rounded-md border border-slate-300 px-3 text-sm font-semibold" onClick={clearFilters}>Clear Filters</button>
-      </div>
-
-      {loading ? <p className="rounded-lg bg-white p-8 text-center text-slate-600">Loading sales...</p> : filteredOrders.length === 0 ? <EmptyState onCreate={() => navigate("/new-order")} /> : <SalesTable orders={paginatedOrders} onDelete={deleteOrder} onInvoice={setInvoiceOrder} onView={setSelectedOrder} />}
-
-      {filteredOrders.length > 0 && <div className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-white p-4 text-sm sm:flex-row sm:items-center sm:justify-between"><p>Showing {start + 1}-{Math.min(start + pageSize, filteredOrders.length)} of {filteredOrders.length} orders</p><div className="flex gap-2"><button className="rounded-md border px-3 py-2 disabled:opacity-50" disabled={page === 1} onClick={() => setPage((p) => p - 1)}>Previous</button><button className="rounded-md border px-3 py-2 disabled:opacity-50" disabled={page === totalPages} onClick={() => setPage((p) => p + 1)}>Next</button></div></div>}
-
-      {selectedOrder && <OrderModal order={selectedOrder} onClose={() => setSelectedOrder(null)} onImage={downloadImage} onPDF={downloadPDF} onPaid={markAsPaid} />}
-      {invoiceOrder && <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/60 px-4 py-6"><div className="mx-auto max-w-4xl rounded-lg bg-white p-4"><div className="mb-3 flex justify-end"><button className="rounded-md border px-3 py-2" onClick={() => setInvoiceOrder(null)}>Close</button></div><InvoiceTemplate ref={invoiceRef} order={invoiceOrder} shop={shop} /></div></div>}
-      <div className="pointer-events-none fixed -left-[9999px] top-0"><InvoiceTemplate ref={invoiceRef} order={invoiceOrder || selectedOrder || {}} shop={shop} /></div>
-    </section>
-  )
+  return <section className="space-y-6"><div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between"><div><p className="text-sm font-semibold uppercase tracking-wide text-[#1D9E75]">Orders</p><h2 className="text-3xl font-semibold">Sales History</h2></div><div className="flex gap-3"><button className="btn-primary" onClick={() => navigate("/new-order")}>New Order</button><button className="btn-outline" onClick={() => exportToCSV(filteredOrders)}><FileDown className="mr-2 inline h-4 w-4" />Export CSV</button></div></div><div className="grid gap-3 rounded-lg border border-slate-200 bg-white p-4 md:grid-cols-3 xl:grid-cols-7"><Field label="From" type="date" value={filters.from} onChange={(v) => updateFilter("from", v)} /><Field label="To" type="date" value={filters.to} onChange={(v) => updateFilter("to", v)} /><Select label="Status" value={filters.status} options={["All", "Paid", "Unpaid", "Partial"]} onChange={(v) => updateFilter("status", v)} /><Select label="Method" value={filters.method} options={["All", "COD", "bKash", "Nagad", "Rocket", "Other"]} onChange={(v) => updateFilter("method", v)} /><Select label="Payment Type" value={filters.paymentType} options={paymentTypes} onChange={(v) => updateFilter("paymentType", v)} /><Field label="Search" value={filters.search} onChange={(v) => updateFilter("search", v)} /><button className="mt-6 rounded-md border px-3 text-sm font-semibold" onClick={() => setFilters({ from: "", to: "", status: "All", method: "All", paymentType: "All", search: "" })}>Clear</button></div><div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-900">Gross: ৳{revenue.grossRevenue} | Products: ৳{revenue.productRevenue} | Delivery: ৳{revenue.deliveryRevenue} | Profit: ৳{revenue.grossProfit} ({margin}%)</div>{filteredOrders.length ? <SalesTable orders={paginated} onDelete={deleteOrder} onInvoice={setInvoiceOrder} onView={setSelectedOrder} /> : <div className="card text-center"><h3 className="text-lg font-semibold">No sales recorded yet</h3><button className="btn-primary mt-4" onClick={() => navigate("/new-order")}>Create your first order</button></div>}<div className="flex justify-between rounded-lg border bg-white p-4 text-sm"><span>Showing {filteredOrders.length ? start + 1 : 0}-{Math.min(start + pageSize, filteredOrders.length)} of {filteredOrders.length} orders</span><span className="space-x-2"><button className="btn-outline" disabled={page === 1} onClick={() => setPage((p) => p - 1)}>Previous</button><button className="btn-outline" disabled={page === totalPages} onClick={() => setPage((p) => p + 1)}>Next</button></span></div>{selectedOrder && <OrderModal order={selectedOrder} onClose={() => setSelectedOrder(null)} onPDF={downloadPDF} onPaid={markAsPaid} />}{invoiceOrder && <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/60 px-4 py-6"><div className="mx-auto max-w-4xl rounded-lg bg-white p-4"><button className="btn-outline mb-3" onClick={() => setInvoiceOrder(null)}>Close</button><InvoiceTemplate ref={invoiceRef} order={invoiceOrder} shop={shop} /></div></div>}<div className="pointer-events-none fixed -left-[9999px] top-0"><InvoiceTemplate ref={invoiceRef} order={invoiceOrder || selectedOrder || {}} shop={shop} /></div></section>
 }
 
-function SalesTable({ orders, onDelete, onInvoice, onView }) {
-  return <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm"><table className="w-full min-w-[1100px] text-left text-sm"><thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>{["Order #", "Date", "Customer Name", "Phone", "Zone", "Items", "Grand Total", "Payment Method", "Payment Status", "Actions"].map((h) => <th key={h} className="px-4 py-3">{h}</th>)}</tr></thead><tbody>{orders.map((order) => <tr key={order.id} className="border-t"><td className="px-4 py-3 font-semibold">{order.orderNumber}</td><td className="px-4 py-3">{formatDate(order)}</td><td className="px-4 py-3">{order.customerName}</td><td className="px-4 py-3">{order.phone}</td><td className="px-4 py-3">{order.zone}</td><td className="px-4 py-3">{order.products?.length || 0}</td><td className="px-4 py-3 font-semibold">৳{order.grandTotal || 0}</td><td className="px-4 py-3">{order.paymentMethod}</td><td className="px-4 py-3"><StatusBadge status={order.paymentStatus} /></td><td className="px-4 py-3"><div className="flex gap-2"><Action icon={Eye} label="View" onClick={() => onView(order)} /><Action icon={Printer} label="Invoice" onClick={() => onInvoice(order)} /><Action icon={Trash2} label="Delete" danger onClick={() => onDelete(order)} /></div></td></tr>)}</tbody></table></div>
-}
-
-function OrderModal({ order, onClose, onImage, onPDF, onPaid }) {
-  return <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/60 px-4 py-6"><section className="mx-auto max-w-3xl rounded-lg bg-white p-5 shadow-xl"><div className="mb-4 flex items-center justify-between"><h3 className="text-xl font-semibold">Order Details</h3><button onClick={onClose}><X className="h-5 w-5" /></button></div><div className="space-y-4 text-sm"><div className="grid gap-3 sm:grid-cols-2"><Detail label="Order" value={order.orderNumber} /><Detail label="Customer" value={order.customerName} /><Detail label="Phone" value={order.phone} /><Detail label="Zone" value={order.zone} /><Detail label="Payment" value={`${order.paymentMethod || ""} / ${order.paymentStatus || ""}`} /><Detail label="Parsed by" value={order.parsedBy || "manual"} /></div><div><p className="font-semibold">Full Address</p><p className="whitespace-pre-wrap rounded-md bg-slate-50 p-3">{order.address}</p></div><div><p className="font-semibold">Products</p>{(order.products || []).map((p, i) => <p key={i} className="rounded-md bg-slate-50 p-2">{p.productName} x {p.quantity} · ৳{p.unitPrice} · Total ৳{p.totalPrice}</p>)}</div><Detail label="Transaction ID" value={order.transactionId || ""} /><Detail label="Notes" value={order.notes || ""} /><p className="text-xl font-bold text-[#1D9E75]">Grand Total: ৳{order.grandTotal || 0}</p></div><div className="mt-6 flex flex-wrap gap-3"><button className="rounded-md bg-[#1D9E75] px-4 py-2 text-sm font-semibold text-white" onClick={() => onPDF(order)}>Download Invoice PDF</button><button className="rounded-md border px-4 py-2 text-sm font-semibold" onClick={() => onImage(order)}>Download Invoice Image</button>{order.paymentStatus === "Unpaid" && <button className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-800" onClick={() => onPaid(order)}>Mark as Paid</button>}<button className="rounded-md border px-4 py-2 text-sm font-semibold" onClick={onClose}>Close</button></div></section></div>
-}
-
-function EmptyState({ onCreate }) { return <div className="rounded-lg border border-dashed border-slate-300 bg-white px-6 py-12 text-center"><h3 className="text-lg font-semibold">No sales recorded yet</h3><button className="mt-4 rounded-md bg-[#1D9E75] px-4 py-2 text-sm font-semibold text-white" onClick={onCreate}>Create your first order</button></div> }
-function Field({ label, value, onChange, type = "text", placeholder = "" }) { return <label className="block"><span className="text-xs font-semibold text-slate-600">{label}</span><input className="mt-1 h-10 w-full rounded-md border border-slate-300 px-3 text-sm" type={type} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} /></label> }
-function Select({ label, value, options, onChange }) { return <label className="block"><span className="text-xs font-semibold text-slate-600">{label}</span><select className="mt-1 h-10 w-full rounded-md border border-slate-300 px-3 text-sm" value={value} onChange={(e) => onChange(e.target.value)}>{options.map((option) => <option key={option}>{option}</option>)}</select></label> }
-function StatusBadge({ status }) { const color = status === "Paid" ? "bg-emerald-50 text-emerald-800" : status === "Partial" ? "bg-yellow-50 text-yellow-800" : "bg-red-50 text-red-800"; return <span className={`rounded-md px-2.5 py-1 text-xs font-semibold ${color}`}>{status || "Unpaid"}</span> }
-function Action({ icon: Icon, label, onClick, danger = false }) { return <button className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold ${danger ? "text-red-700 hover:bg-red-50" : "text-slate-700 hover:bg-slate-100"}`} onClick={onClick}><Icon className="h-4 w-4" />{label}</button> }
-function Detail({ label, value }) { return <p><span className="font-semibold">{label}: </span>{value}</p> }
-function formatDate(order) { return getOrderDateValue(order).toLocaleDateString("en-GB") }
+function SalesTable({ orders, onDelete, onInvoice, onView }) { return <div className="overflow-x-auto rounded-lg border bg-white"><table className="w-full min-w-[1300px] text-left text-sm"><thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>{["Order #", "Date", "Customer", "Phone", "Zone", "Items", "Grand Total", "Cost", "Profit", "Payment Type", "Payment Status", "Actions"].map((h) => <th key={h} className="px-4 py-3">{h}</th>)}</tr></thead><tbody>{orders.map((o) => <tr key={o.id} className="border-t"><td className="px-4 py-3 font-semibold">{o.orderNumber}</td><td>{getOrderDateValue(o).toLocaleDateString("en-GB")}</td><td>{o.customerName}</td><td>{o.phone}</td><td>{o.zone}</td><td>{o.products?.length || 0}</td><td>৳{o.grandTotal || o.grossRevenue || 0}</td><td>৳{o.totalCost || 0}</td><td>৳{o.grossProfit || 0}</td><td><PaymentTypeBadge type={o.paymentType} /></td><td><StatusBadge status={o.paymentStatus || o.productPaymentStatus} /></td><td><div className="flex gap-2"><Action icon={Eye} label="View" onClick={() => onView(o)} /><Action icon={Printer} label="Invoice" onClick={() => onInvoice(o)} /><Action icon={Trash2} label="Delete" danger onClick={() => onDelete(o)} /></div></td></tr>)}</tbody></table></div> }
+function OrderModal({ order, onClose, onPDF, onPaid }) { return <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/60 px-4 py-6"><section className="mx-auto max-w-3xl rounded-lg bg-white p-5"><div className="mb-4 flex justify-between"><h3 className="text-xl font-semibold">Order Details</h3><button onClick={onClose}><X className="h-5 w-5" /></button></div><div className="space-y-3 text-sm"><p><b>Customer:</b> {order.customerName} / {order.phone}</p><p className="whitespace-pre-wrap"><b>Address:</b> {order.address}</p><p><b>Payment Type:</b> {paymentTypeLabel(order.paymentType)}</p><PaymentBreakdown order={order} /><p><b>Parsed by:</b> {order.parsedBy || "manual"}</p><p><b>Notes:</b> {order.notes || ""}</p>{(order.products || []).map((p, i) => <p key={i} className="rounded bg-slate-50 p-2">{p.productName} x {p.quantity} · ৳{p.totalPrice}</p>)}</div><div className="mt-5 flex flex-wrap gap-3"><button className="btn-primary" onClick={() => onPDF(order)}>Download Invoice PDF</button>{(order.paymentStatus || order.productPaymentStatus) === "Unpaid" && <button className="btn-outline" onClick={() => onPaid(order)}>Mark as Paid</button>}<button className="btn-outline" onClick={onClose}>Close</button></div></section></div> }
+function PaymentBreakdown({ order }) { if (order.paymentType === "delivery_only_online") return <div className="rounded bg-slate-50 p-3"><p>Online Payment: ৳{order.onlineAmount || order.deliveryCharge} via {order.deliveryPaymentMethod} (TXN: {order.deliveryTransactionId || ""}) {order.deliveryPaymentStatus === "Paid" ? "Paid" : "Pending"}</p><p>On Delivery: ৳{order.codAmount || order.subtotal} Cash Pending</p></div>; if (order.paymentType === "full_online") return <p className="rounded bg-slate-50 p-3">Online Payment: ৳{order.onlineAmount || order.grandTotal} via {order.productPaymentMethod} (TXN: {order.productTransactionId || ""})</p>; return <p className="rounded bg-slate-50 p-3">On Delivery: ৳{order.codAmount || order.grandTotal} Cash Pending</p> }
+function Field({ label, value, onChange, type = "text" }) { return <label><span className="text-xs font-semibold text-slate-600">{label}</span><input className="mt-1 h-10 w-full rounded-md border px-3 text-sm" type={type} value={value} onChange={(e) => onChange(e.target.value)} /></label> }
+function Select({ label, value, options, onChange }) { return <label><span className="text-xs font-semibold text-slate-600">{label}</span><select className="mt-1 h-10 w-full rounded-md border px-3 text-sm" value={value} onChange={(e) => onChange(e.target.value)}>{options.map((o) => <option key={o}>{o}</option>)}</select></label> }
+function StatusBadge({ status = "Unpaid" }) { const c = status === "Paid" ? "badge-paid" : status === "Partial" ? "badge-partial" : "badge-unpaid"; return <span className={c}>{status}</span> }
+function PaymentTypeBadge({ type }) { const c = type === "full_online" ? "bg-blue-50 text-blue-800" : type === "delivery_only_online" ? "bg-purple-50 text-purple-800" : "bg-slate-100 text-slate-700"; return <span className={`rounded-full px-2 py-1 text-xs font-semibold ${c}`}>{paymentTypeLabel(type)}</span> }
+function paymentTypeLabel(type) { return type === "full_online" ? "Full Online" : type === "delivery_only_online" ? "Delivery Online" : "Full COD" }
+function Action({ icon: Icon, label, onClick, danger = false }) { return <button className={danger ? "text-red-700" : "text-slate-700"} onClick={onClick}><Icon className="mr-1 inline h-4 w-4" />{label}</button> }
 function waitFrame() { return new Promise((resolve) => requestAnimationFrame(() => resolve())) }
 
 export default Sales
-
-
