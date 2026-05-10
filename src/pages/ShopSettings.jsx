@@ -149,7 +149,7 @@ function ShopSettings() {
               </button>
               {form.logoURL && <button className="h-10 rounded-md border border-slate-300 px-4 text-sm font-semibold text-slate-700" type="button" onClick={removeLogo} disabled={uploadingLogo}>Remove Logo</button>}
             </div>
-            {uploadingLogo && <div className="space-y-2"><p className="text-sm text-slate-500">Uploading{logoProgress ? ` ${logoProgress}%` : "..."}</p><div className="h-2 w-44 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-[#1D9E75] transition-all" style={{ width: `${Math.max(8, logoProgress)}%` }} /></div></div>}
+            {uploadingLogo && <div className="space-y-2"><p className="text-sm text-slate-500">{logoProgress > 0 ? `Uploading ${logoProgress}%` : "Connecting to Firebase Storage..."}</p><div className="relative h-2 w-44 overflow-hidden rounded-full bg-slate-100">{logoProgress > 0 ? <div className="h-full rounded-full bg-[#1D9E75] transition-all" style={{ width: `${logoProgress}%` }} /> : <div className="absolute inset-y-0 w-16 animate-pulse rounded-full bg-[#1D9E75]" style={{ left: "35%" }} />}</div><p className="text-xs text-slate-400">If this stays here, Firebase Storage rules or bucket setup may be blocking uploads.</p></div>}
           </div>
         </div>
       </div>
@@ -176,4 +176,5 @@ function Field({ label, name, value, onChange, type = "text", disabled }) {
 }
 
 export default ShopSettings
+
 
