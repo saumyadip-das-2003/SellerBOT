@@ -12,6 +12,7 @@ import { applyCorrections, saveCorrection } from "../utils/correctionMemory.js"
 import { fuzzyMatchSingle } from "../utils/fuzzyMatcher.js"
 import { convertToStructured } from "../utils/geminiHelper.js"
 import { convertBanglaToEnglish, parseChat, parseProductQuantityPairs } from "../utils/parser.js"
+import { printInvoiceElement } from "../utils/printInvoice.js"
 import { detectZone } from "../utils/zoneDetector.js"
 
 const banglaTemplate = `আমাদের কাছে অর্ডার করতে নিচের ফরম্যাটে মেসেজ করুন:\n\nনামঃ (আপনার নাম)\nমোবাইলঃ (আপনার নম্বর)\nঠিকানাঃ (সম্পূর্ণ ঠিকানা)\n\nপণ্যঃ (প্রথম পণ্যের নাম)\nপরিমাণঃ (সংখ্যা)\n\nপণ্যঃ (দ্বিতীয় পণ্যের নাম)\nপরিমাণঃ (সংখ্যা)\n\nউদাহরণঃ\nনামঃ রহিম মিয়া\nমোবাইলঃ ০১৭১২৩৪৫৬৭৮\nঠিকানাঃ মিরপুর ১০, ঢাকা ১২১৬\n\nপণ্যঃ নীল শার্ট\nপরিমাণঃ ২\n\nপণ্যঃ কালো প্যান্ট\nপরিমাণঃ ১`
@@ -159,7 +160,7 @@ function NewOrder() {
 
   const handlePDFDownload = async () => { const canvas = await html2canvas(invoiceRef.current, { scale: 2 }); const pdf = new jsPDF("p", "mm", "a4"); const width = pdf.internal.pageSize.getWidth(); pdf.addImage(canvas.toDataURL("image/png"), "PNG", 0, 0, width, (canvas.height * width) / canvas.width); pdf.save(`SellerBot-Invoice-${orderNumber}.pdf`) }
   const handleImageDownload = async () => { const canvas = await html2canvas(invoiceRef.current, { scale: 2 }); const link = document.createElement("a"); link.download = `SellerBot-Invoice-${orderNumber}.png`; link.href = canvas.toDataURL("image/png"); link.click() }
-  const handlePrintInvoice = async () => { await waitFrame(); window.print() }
+  const handlePrintInvoice = async () => { await printInvoiceElement(invoiceRef.current) }
   const saveSale = async () => { try { setSaving(true); await addDoc(collection(db, "users", currentUser.uid, "orders"), { ...enrichedOrder, orderNumber, invoiceURL: "", createdAt: serverTimestamp() }); toast.success("Order saved and sale recorded."); navigate("/sales") } catch (error) { toast.error(error.message || "Could not save order.") } finally { setSaving(false) } }
 
   if (stage === 1) return <ChatStage chatText={chatText} chatType={chatType} loadingSteps={loadingSteps} loadingMessage={loadingMessage} onChatChange={setChatText} onChatTypeChange={setChatType} onParse={handleParseChat} />
@@ -202,7 +203,6 @@ function updateRowFromField(row, field, value, catalog) { if (field !== "product
 function recalcRow(row) { const quantity = Number(row.quantity || 1); const unitPrice = Number(row.unitPrice || 0); return { ...row, quantity, unitPrice, totalPrice: quantity * unitPrice } }
 function normalizeProductRows(rows = []) { return rows.length ? rows.map(recalcRow) : [createProductRow()] }
 function getPaymentAmounts(type, subtotal, delivery, grandTotal) { if (type === "full_online") return { onlineAmount: grandTotal, codAmount: 0 }; if (type === "delivery_only_online") return { onlineAmount: delivery, codAmount: subtotal }; return { onlineAmount: 0, codAmount: grandTotal } }
-function waitFrame() { return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))) }
 function getLegacyPaymentFields(order) { if (order.paymentType === "full_online") return { paymentMethod: order.productPaymentMethod || "bKash", paymentStatus: order.productPaymentStatus || "Unpaid", transactionId: order.productTransactionId || "" }; if (order.paymentType === "delivery_only_online") return { productPaymentMethod: "COD", productPaymentStatus: "Unpaid", paymentMethod: order.deliveryPaymentMethod || "bKash", paymentStatus: order.deliveryPaymentStatus === "Paid" ? "Partial" : "Unpaid", transactionId: order.deliveryTransactionId || "" }; return { paymentMethod: "COD", paymentStatus: "Unpaid", transactionId: "" } }
 
 export default NewOrder
