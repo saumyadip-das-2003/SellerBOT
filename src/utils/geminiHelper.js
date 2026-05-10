@@ -121,8 +121,8 @@ Use null when a field is missing.
 }
 
 export async function convertToStructuredText(chatText, productCatalog = [], zones = []) {
+  const localFallback = structuredTextFromFallback(convertBanglishFallback(chatText, productCatalog, zones))
   const model = getModel()
-  if (!model) return null
 
   const productList = productCatalog
     .map((p) => `${p.name}${p.banglaName ? "/" + p.banglaName : ""}${p.tags?.length ? " (tags: " + p.tags.join(", ") + ")" : ""}`)
@@ -225,16 +225,81 @@ ${chatText}
 
 Return only the structured text. No markdown. No JSON.
 `
+  if (model) {
+    try {
+      const result = await model.generateContent(prompt)
+      const structuredText = cleanStructuredText(result.response.text())
+      if (structuredText) return structuredText
+    } catch (error) {
+      console.error("Gemini structured text conversion failed:", error)
+    }
+  }
+
+  const groqText = await convertWithGroq(prompt)
+  return groqText || localFallback
+}
+
+async function convertWithGroq(prompt) {
+  const apiKey = import.meta.env.VITE_GROQ_API_KEY
+  if (!apiKey) {
+    console.warn("Groq API key not set. Groq fallback disabled.")
+    return null
+  }
 
   try {
-    const result = await model.generateContent(prompt)
-    return cleanStructuredText(result.response.text())
+    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: import.meta.env.VITE_GROQ_MODEL || "openai/gpt-oss-20b",
+        messages: [
+          {
+            role: "system",
+            content: "You convert Bangladeshi seller chats into the exact structured text format requested. Return only structured text.",
+          },
+          { role: "user", content: prompt },
+        ],
+        temperature: 0.1,
+        max_completion_tokens: 800,
+      }),
+    })
+
+    if (!response.ok) {
+      const message = await response.text()
+      console.error("Groq structured text conversion failed:", response.status, message)
+      return null
+    }
+
+    const data = await response.json()
+    return cleanStructuredText(data.choices?.[0]?.message?.content || "")
   } catch (error) {
-    console.error("Gemini structured text conversion failed:", error)
+    console.error("Groq structured text conversion failed:", error)
     return null
   }
 }
 
+function structuredTextFromFallback(result) {
+  if (!result) return null
+  const lines = [
+    `Name: ${result.customerName || ""}`,
+    `Mobile: ${result.phone || ""}`,
+    `Address: ${result.address || ""}`,
+    "",
+  ]
+
+  ;(result.products || []).forEach((product) => {
+    lines.push(`Product: ${product.productName || ""}`)
+    lines.push(`Quantity: ${product.quantity || 1}`)
+    lines.push("")
+  })
+
+  lines.push(`Payment: ${result.paymentMethod || "COD"}`)
+  lines.push(`Note: ${result.notes || ""}`)
+  return lines.join("\n").trim()
+}
 function cleanStructuredText(text = "") {
   return String(text)
     .replace(/```(?:text)?/gi, "")
