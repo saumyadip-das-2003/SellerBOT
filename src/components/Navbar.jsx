@@ -54,11 +54,8 @@ function Navbar() {
         <div className="mx-auto max-w-6xl px-4 py-3">
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
-              {shop?.logoURL ? (
-                <img className="h-8 w-8 rounded-lg object-cover" src={shop.logoURL} alt="Shop logo" />
-              ) : (
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#1D9E75] text-xs font-bold text-white">SB</div>
-              )}
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#1D9E75] text-xs font-bold text-white">SB</div>
+
               <div>
                 <p className="text-lg font-semibold leading-tight text-slate-950">SellerBot</p>
                 <p className="hidden text-xs font-medium text-slate-500 sm:block">{currentUser?.displayName || shop?.ownerName || "Seller"}</p>
@@ -134,3 +131,4 @@ function LogoutButton({ onLogout, fullWidth = false }) {
 }
 
 export default Navbar
+

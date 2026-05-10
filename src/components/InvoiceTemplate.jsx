@@ -19,14 +19,13 @@ function PaymentInfo({ order }) {
 }
 
 const InvoiceTemplate = forwardRef(function InvoiceTemplate({ order, shop }, ref) {
-  const orderNumber = order.orderNumber || `SB-${String(Date.now()).slice(-8)}`
+  const orderNumber = order.orderNumber || "SB-PREVIEW"
 
   return (
     <div ref={ref} className="mx-auto w-full max-w-3xl bg-white p-8 text-black" style={{ fontSize: 12, lineHeight: 1.45 }}>
       <div className="border border-black">
         <header className="flex items-start justify-between gap-6 border-b border-black p-5">
           <div className="flex items-start gap-4">
-            {shop?.logoURL && <img className="h-[60px] w-[60px] rounded object-cover" src={shop.logoURL} alt="Shop logo" />}
             <div>
               <h1 className="text-2xl font-bold">{shop?.shopName || "SELLERBOT"}</h1>
               <p>{shop?.address || ""}</p>
@@ -95,4 +94,6 @@ const InvoiceTemplate = forwardRef(function InvoiceTemplate({ order, shop }, ref
 })
 
 export default InvoiceTemplate
+
+
 
