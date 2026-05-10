@@ -1,4 +1,4 @@
-﻿import { doc, getDoc, setDoc } from "firebase/firestore"
+import { doc, getDoc, setDoc } from "firebase/firestore"
 import { db } from "../firebase/config"
 
 export async function saveCorrection(uid, originalText, correctedValue, fieldType) {
@@ -23,7 +23,7 @@ export async function applyCorrections(uid, parsedResult, originalChat) {
 
   const chatLower = originalChat.toLowerCase()
 
-  if (corrections.customerName) {
+  if (corrections.customerName && !parsedResult.lineMatches?.name) {
     for (const [pattern, correction] of Object.entries(corrections.customerName)) {
       if (chatLower.includes(pattern)) {
         parsedResult.customerName = correction
@@ -32,7 +32,7 @@ export async function applyCorrections(uid, parsedResult, originalChat) {
     }
   }
 
-  if (corrections.address) {
+  if (corrections.address && !parsedResult.lineMatches?.address) {
     for (const [pattern, correction] of Object.entries(corrections.address)) {
       if (chatLower.includes(pattern)) {
         parsedResult.address = correction

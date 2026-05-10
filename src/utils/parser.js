@@ -132,7 +132,11 @@ export function extractPayment(text = "") {
     if (index >= 0) { paymentMethod = method; keywordIndex = index; break }
   }
   const windowText = keywordIndex >= 0 ? converted.slice(Math.max(0, keywordIndex - 50), keywordIndex + 50).toUpperCase() : ""
-  return { paymentMethod, transactionId: windowText.match(/[A-Z0-9]{8,10}/g)?.[0] || null }
+  const ignoredWords = new Set(["QUANTITY", "PRODUCT", "PAYMENT", "ADDRESS", "MOBILE", "DELIVER", "DELIVERY", "PLEASE", "NAGAD", "BKASH", "BIKASH", "ROCKET"])
+  const transactionId = (windowText.match(/[A-Z0-9]{8,10}/g) || []).find((candidate) =>
+    /[A-Z]/.test(candidate) && /\d/.test(candidate) && !ignoredWords.has(candidate) && !/^01[3-9]\d{8}$/.test(candidate),
+  ) || null
+  return { paymentMethod, transactionId }
 }
 
 export function extractAddress(text = "") {
