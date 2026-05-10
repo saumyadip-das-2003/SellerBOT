@@ -19,13 +19,6 @@ const addressWords = ["road", "lane", "street", "village", "gram", "para", "ward
 const quantityMap = { ekta: 1, "একটা": 1, "একটি": 1, duita: 2, "দুইটা": 2, "দুটো": 2, tinta: 3, "তিনটা": 3, charta: 4, "চারটা": 4, pachta: 5, "পাঁচটা": 5, chota: 6, "ছয়টা": 6, satta: 7, "সাতটা": 7, atta: 8, "আটটা": 8, nota: 9, "নয়টা": 9, dosta: 10, "দশটা": 10 }
 const paymentKeywords = { bkash: "bKash", "বিকাশ": "bKash", bikash: "bKash", nagad: "Nagad", "নগদ": "Nagad", rocket: "Rocket", "রকেট": "Rocket", bank: "Bank", "ব্যাংক": "Bank", cash: "COD", "ক্যাশ": "COD", cod: "COD", upay: "uPay", cellfin: "Other" }
 
-export function isStructuredChat(chatText = "") {
-  const structuredTriggers = ["নামঃ", "নাম:", "name:", "ঠিকানাঃ", "ঠিকানা:", "address:", "মোবাইলঃ", "মোবাইল:", "mobile:", "phone:", "পণ্যঃ", "পণ্য:", "product:", "পরিমাণঃ", "পরিমাণ:", "quantity:", "আইটেমঃ", "আইটেম:", "item:"]
-  let triggerCount = 0
-  for (const trigger of structuredTriggers) if (chatText.includes(trigger)) triggerCount += 1
-  return triggerCount >= 2
-}
-
 export function parseProductQuantityPairs(chatText = "") {
   const lines = chatText.split("\n").map((line) => line.trim())
   const products = []
@@ -160,6 +153,7 @@ export function extractNotes(text = "") {
   }
   return null
 }
+
 
 
 

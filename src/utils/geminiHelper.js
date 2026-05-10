@@ -15,43 +15,75 @@ export async function convertToStructured(chatText, productCatalog = [], zones =
   const productList = productCatalog.map((p) => `${p.name}${p.banglaName ? "/" + p.banglaName : ""}`).join(", ")
   const zoneList = zones.map((z) => z.area).join(", ")
   const prompt = `
-You are helping a Bangladeshi online seller process customer orders from Facebook/WhatsApp chat.
+You are an AI assistant for a Bangladeshi F-commerce (Facebook/WhatsApp) seller.
 
-The customer sent an UNSTRUCTURED message. Your job is to:
-1. Read and understand the message (may be Bangla/English/Banglish)
-2. Extract all order information
-3. Return it as a STRUCTURED format
+A customer sent an unstructured chat message.
+Extract order information accurately.
 
-SELLER'S PRODUCTS: ${productList}
+Language: May be Bangla, English, or Banglish.
+
+KEY BANGLISH PATTERNS:
+Name patterns:
+- "ami X" = I am X → name is X
+- "ami X," = I am X → name is X (ignore comma)
+- "amar nam X" = my name is X
+- "ami X boltesi" = I am saying, I am X
+- Never include vai/bhai/apu/apa/ভাই in name
+
+Location patterns:
+- "X e thaki" = I live in X → address is X
+- "X te thaki" = I live in X → address is X
+- "X theke" = from X → address is X
+- "X e achi" = I am in X → address is X
+- "X তে থাকি" = I live in X
+- Extract X as the address
+
+Quantity patterns:
+- "Xta" = X pieces (2ta=2, 3ta=3)
+- "X piece/pcs/nos" = X pieces
+- "ekta/একটা" = 1
+- "duita/দুইটা" = 2
+- "tinta/তিনটা" = 3
+- "ar/and/+" separates multiple products
+  "2ta shirt ar 1ta pant" = shirt:2, pant:1
+
+Payment patterns:
+- "bkash/bikash/বিকাশ korbo/dibo" = bKash
+- "nagad/নগদ e dibo" = Nagad
+- "rocket" = Rocket
+- "cash/cod" = COD
+
+SELLER PRODUCTS: ${productList}
 DELIVERY ZONES: ${zoneList}
 
-BANGLISH PATTERNS:
-- "ami X / আমি X" = customer name is X
-- "amar nam X" = customer name is X
-- "Xta/Xটা/X pcs/X piece/X nos" = quantity is X
-- "ekta=1, duita=2, tinta=3, charta=4, pachta=5"
-- "lagbe/চাই/নেব" = want to order
-- "pathaben/পাঠাবেন" = please send
-- "bkash/বিকাশ/nagad/নগদ/rocket" = payment method
-- "vai/bhai/apu/apa/ভাই/আপু" = NOT part of name
-
-UNSTRUCTURED CHAT:
+CUSTOMER CHAT:
 """
 ${chatText}
 """
 
-Return ONLY a valid JSON object. No explanation. No markdown.
+RULES:
+1. Extract customer name WITHOUT vai/bhai/apu/apa
+2. Extract full address EXACTLY as mentioned
+3. Match each product to closest in catalog
+4. Quantity must be per product separately
+5. If something not found → use null
 
+Return ONLY valid JSON, no explanation:
 {
   "customerName": "string or null",
   "phone": "11 digit string or null",
-  "address": "complete address exactly as mentioned or null",
-  "zone": "closest matching zone from list or null",
-  "products": [{ "productName": "best match from catalog", "quantity": 1 }],
-  "paymentMethod": "COD or bKash or Nagad or Rocket or Bank or Other",
-  "deliveryPaymentMethod": "same or different from above or null",
+  "address": "full address string or null",
+  "zone": "zone name from list or null",
+  "products": [
+    {
+      "productName": "matched catalog name",
+      "quantity": number
+    }
+  ],
+  "paymentMethod": "COD|bKash|Nagad|Rocket|Bank|Other",
+  "deliveryPaymentMethod": "COD|bKash|Nagad|Rocket|Bank|Other|null",
   "transactionId": "string or null",
-  "notes": "special instructions or null"
+  "notes": "string or null"
 }
 `
   try {
