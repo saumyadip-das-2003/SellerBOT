@@ -10,7 +10,7 @@ function getModel() {
 
 export async function convertToStructured(chatText, productCatalog = [], zones = []) {
   const model = getModel()
-  if (!model) return null
+  if (!model) return convertBanglishFallback(chatText, productCatalog, zones)
 
   const productList = productCatalog.map((p) => `${p.name}${p.banglaName ? "/" + p.banglaName : ""}`).join(", ")
   const zoneList = zones.map((z) => z.area).join(", ")
@@ -88,11 +88,11 @@ Return ONLY valid JSON, no explanation:
 `
   try {
     const result = await model.generateContent(prompt)
-    const cleaned = result.response.text().replace(/```json/g, "").replace(/```/g, "").trim()
-    return JSON.parse(cleaned)
+    const parsed = parseJsonResponse(result.response.text())
+    return hasUsefulExtraction(parsed) ? parsed : convertBanglishFallback(chatText, productCatalog, zones)
   } catch (err) {
     console.error("Gemini pre-processor failed:", err)
-    return null
+    return convertBanglishFallback(chatText, productCatalog, zones)
   }
 }
 
@@ -103,9 +103,143 @@ export async function extractWithGemini(chatText, missingFields, productCatalog)
   const prompt = `Extract ONLY these missing fields: ${missingFields.join(", ")}\nProducts: ${productNames}\nChat:\n${chatText}\nReturn ONLY valid JSON.`
   try {
     const result = await model.generateContent(prompt)
-    return JSON.parse(result.response.text().replace(/```json|```/g, "").trim())
+    return parseJsonResponse(result.response.text()) || {}
   } catch (error) {
     console.error("Gemini extraction failed:", error)
     return {}
   }
 }
+
+function parseJsonResponse(text = "") {
+  const cleaned = text.replace(/```json/g, "").replace(/```/g, "").trim()
+  try {
+    return JSON.parse(cleaned)
+  } catch {
+    const start = cleaned.indexOf("{")
+    const end = cleaned.lastIndexOf("}")
+    if (start === -1 || end === -1 || end <= start) return null
+    try {
+      return JSON.parse(cleaned.slice(start, end + 1))
+    } catch {
+      return null
+    }
+  }
+}
+
+function hasUsefulExtraction(result) {
+  return Boolean(result && (result.customerName || result.phone || result.address || result.products?.length))
+}
+
+function convertBanglishFallback(chatText, productCatalog = [], zones = []) {
+  const text = convertBanglaDigits(chatText || "")
+  const lower = text.toLowerCase()
+  const customerName = extractBanglishName(text)
+  const address = extractBanglishAddress(text, zones)
+  const phone = text.match(/(?:\+?88)?01[3-9]\d{8}/)?.[0]?.replace(/^(\+?88)/, "") || null
+  const products = extractBanglishProducts(text, productCatalog)
+  const paymentMethod = extractPaymentMethod(lower)
+
+  if (!customerName && !address && !phone && products.length === 0) return null
+
+  return {
+    customerName,
+    phone,
+    address,
+    zone: matchZoneName(address, zones),
+    products,
+    paymentMethod,
+    deliveryPaymentMethod: null,
+    transactionId: null,
+    notes: null,
+  }
+}
+
+function convertBanglaDigits(value) {
+  const banglaDigits = "০১২৩৪৫৬৭৮৯"
+  const englishDigits = "0123456789"
+  return String(value).replace(/[\u09e6-\u09ef]/g, (digit) => englishDigits[banglaDigits.indexOf(digit)])
+}
+
+function extractBanglishName(text) {
+  const patterns = [
+    /\bami\s+([^,\n]+?)(?:\s+boltesi|,|\n|$)/i,
+    /\bamar\s+nam\s+([^,\n]+?)(?:,|\n|$)/i,
+    /\bname\s*[:-]\s*([^,\n]+)/i,
+  ]
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern)
+    if (!match) continue
+    const name = cleanName(match[1])
+    if (name) return name
+  }
+
+  return null
+}
+
+function cleanName(name) {
+  return name
+    .replace(/\b(vai|bhai|apu|apa)\b/gi, "")
+    .replace(/ভাই|আপু|আপা/g, "")
+    .replace(/\s+/g, " ")
+    .trim() || null
+}
+
+function extractBanglishAddress(text, zones) {
+  const locationPatterns = [
+    /(?:ami\s+[^,\n]+,\s*)?([a-zA-Z\u0980-\u09FF\s.'-]+?)\s+(?:e|te)\s+thaki/i,
+    /([a-zA-Z\u0980-\u09FF\s.'-]+?)\s+theke/i,
+    /([a-zA-Z\u0980-\u09FF\s.'-]+?)\s+(?:e|te)\s+achi/i,
+    /([a-zA-Z\u0980-\u09FF\s.'-]+?)\s+তে\s+থাকি/i,
+  ]
+
+  for (const pattern of locationPatterns) {
+    const match = text.match(pattern)
+    if (match?.[1]) return match[1].trim().replace(/\s+/g, " ")
+  }
+
+  const lower = text.toLowerCase()
+  const zone = zones.find((item) => [item.area, item.banglaArea, ...(item.keywords || [])].filter(Boolean).some((keyword) => lower.includes(String(keyword).toLowerCase())))
+  return zone?.area || null
+}
+
+function extractBanglishProducts(text, productCatalog) {
+  const products = []
+  const lower = text.toLowerCase()
+  const quantityWords = { ekta: 1, duita: 2, tinta: 3, charta: 4, pachta: 5, একটা: 1, দুইটা: 2, তিনটা: 3 }
+  const pattern = /(\d+|ekta|duita|tinta|charta|pachta|একটা|দুইটা|তিনটা)\s*(?:ta|টা|pcs|piece|pieces|nos)?\s+([a-zA-Z\u0980-\u09FF][a-zA-Z\u0980-\u09FF'-]*)/gi
+  let match
+
+  while ((match = pattern.exec(lower))) {
+    const quantity = Number(match[1]) || quantityWords[match[1]] || 1
+    const productWord = match[2]
+    const catalogMatch = productCatalog.find((product) => productMatches(product, productWord))
+    products.push({
+      productName: catalogMatch?.name || productWord,
+      quantity,
+    })
+  }
+
+  return products
+}
+
+function productMatches(product, word) {
+  const values = [product.name, product.banglaName, ...(product.tags || [])].filter(Boolean).map((value) => String(value).toLowerCase())
+  return values.some((value) => value.includes(word) || word.includes(value))
+}
+
+function extractPaymentMethod(lower) {
+  if (lower.includes("bkash") || lower.includes("bikash") || lower.includes("বিকাশ")) return "bKash"
+  if (lower.includes("nagad") || lower.includes("নগদ")) return "Nagad"
+  if (lower.includes("rocket") || lower.includes("রকেট")) return "Rocket"
+  if (lower.includes("bank") || lower.includes("ব্যাংক")) return "Bank"
+  return "COD"
+}
+
+function matchZoneName(address, zones) {
+  if (!address) return null
+  const lower = address.toLowerCase()
+  return zones.find((zone) => [zone.area, zone.banglaArea, ...(zone.keywords || [])].filter(Boolean).some((keyword) => lower.includes(String(keyword).toLowerCase())))?.area || null
+}
+
+
