@@ -1,4 +1,4 @@
-﻿import { forwardRef } from "react"
+import { forwardRef } from "react"
 
 function formatDate(date = new Date()) {
   return new Intl.DateTimeFormat("en-GB").format(date)
@@ -22,7 +22,7 @@ const InvoiceTemplate = forwardRef(function InvoiceTemplate({ order, shop }, ref
   const orderNumber = order.orderNumber || "SB-PREVIEW"
 
   return (
-    <div ref={ref} className="mx-auto w-full max-w-3xl bg-white p-8 text-black" style={{ fontSize: 12, lineHeight: 1.45 }}>
+    <div ref={ref} className="sellerbot-invoice-print mx-auto w-full max-w-3xl bg-white p-8 text-black" style={{ fontSize: 12, lineHeight: 1.45 }}>
       <div className="border border-black">
         <header className="flex items-start justify-between gap-6 border-b border-black p-5">
           <div className="flex items-start gap-4">

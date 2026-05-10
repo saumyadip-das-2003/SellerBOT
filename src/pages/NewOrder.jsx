@@ -1,8 +1,8 @@
-﻿import { useMemo, useRef, useState } from "react"
+import { useMemo, useRef, useState } from "react"
 import { addDoc, collection, doc, getDoc, getDocs, serverTimestamp } from "firebase/firestore"
 import html2canvas from "html2canvas"
 import jsPDF from "jspdf"
-import { ArrowLeft, Check, ClipboardList, CreditCard, FileDown, ImageDown, Loader2, MessageCircle, Plus, Trash2, Truck, Wallet } from "lucide-react"
+import { ArrowLeft, Check, ClipboardList, CreditCard, FileDown, ImageDown, Loader2, MessageCircle, Printer, Plus, Trash2, Truck, Wallet } from "lucide-react"
 import toast from "react-hot-toast"
 import { useNavigate } from "react-router-dom"
 import InvoiceTemplate from "../components/InvoiceTemplate.jsx"
@@ -159,11 +159,12 @@ function NewOrder() {
 
   const handlePDFDownload = async () => { const canvas = await html2canvas(invoiceRef.current, { scale: 2 }); const pdf = new jsPDF("p", "mm", "a4"); const width = pdf.internal.pageSize.getWidth(); pdf.addImage(canvas.toDataURL("image/png"), "PNG", 0, 0, width, (canvas.height * width) / canvas.width); pdf.save(`SellerBot-Invoice-${orderNumber}.pdf`) }
   const handleImageDownload = async () => { const canvas = await html2canvas(invoiceRef.current, { scale: 2 }); const link = document.createElement("a"); link.download = `SellerBot-Invoice-${orderNumber}.png`; link.href = canvas.toDataURL("image/png"); link.click() }
+  const handlePrintInvoice = async () => { await waitFrame(); window.print() }
   const saveSale = async () => { try { setSaving(true); await addDoc(collection(db, "users", currentUser.uid, "orders"), { ...enrichedOrder, orderNumber, invoiceURL: "", createdAt: serverTimestamp() }); toast.success("Order saved and sale recorded."); navigate("/sales") } catch (error) { toast.error(error.message || "Could not save order.") } finally { setSaving(false) } }
 
   if (stage === 1) return <ChatStage chatText={chatText} chatType={chatType} loadingSteps={loadingSteps} loadingMessage={loadingMessage} onChatChange={setChatText} onChatTypeChange={setChatType} onParse={handleParseChat} />
   if (stage === 2) return <ReviewStage order={order} products={products} zones={zones} subtotal={subtotal} grandTotal={grandTotal} paymentAmounts={paymentAmounts} parsedBy={parsedBy} onAddProduct={addProductRow} onBack={() => setStage(1)} onGenerate={() => setStage(3)} onProductRemove={removeProductRow} onProductUpdate={updateProductRow} onUpdate={updateOrder} onZoneChange={updateZone} />
-  return <section className="space-y-6"><div className="flex items-center justify-between"><h2 className="text-3xl font-semibold">Invoice Preview</h2><button className="btn-outline" onClick={() => setStage(2)}><ArrowLeft className="mr-2 inline h-4 w-4" />Back to Edit</button></div><InvoiceTemplate ref={invoiceRef} order={{ ...enrichedOrder, orderNumber }} shop={shop} /><div className="grid gap-3 sm:grid-cols-3"><button className="btn-outline" onClick={handlePDFDownload}><FileDown className="mr-2 inline h-4 w-4" />Download PDF</button><button className="btn-outline" onClick={handleImageDownload}><ImageDown className="mr-2 inline h-4 w-4" />Download Image</button><button className="btn-primary" onClick={saveSale} disabled={saving}>{saving ? "Saving..." : "Save & Record Sale"}</button></div></section>
+  return <section className="space-y-6"><div className="flex items-center justify-between"><h2 className="text-3xl font-semibold">Invoice Preview</h2><button className="btn-outline" onClick={() => setStage(2)}><ArrowLeft className="mr-2 inline h-4 w-4" />Back to Edit</button></div><InvoiceTemplate ref={invoiceRef} order={{ ...enrichedOrder, orderNumber }} shop={shop} /><div className="grid gap-3 sm:grid-cols-4"><button className="btn-outline" onClick={handlePDFDownload}><FileDown className="mr-2 inline h-4 w-4" />Download PDF</button><button className="btn-outline" onClick={handleImageDownload}><ImageDown className="mr-2 inline h-4 w-4" />Download Image</button><button className="btn-outline" onClick={handlePrintInvoice}><Printer className="mr-2 inline h-4 w-4" />Print Invoice</button><button className="btn-primary" onClick={saveSale} disabled={saving}>{saving ? "Saving..." : "Save & Record Sale"}</button></div></section>
 }
 
 function ChatStage({ chatText, chatType, loadingSteps, loadingMessage, onChatChange, onChatTypeChange, onParse }) {
@@ -201,6 +202,7 @@ function updateRowFromField(row, field, value, catalog) { if (field !== "product
 function recalcRow(row) { const quantity = Number(row.quantity || 1); const unitPrice = Number(row.unitPrice || 0); return { ...row, quantity, unitPrice, totalPrice: quantity * unitPrice } }
 function normalizeProductRows(rows = []) { return rows.length ? rows.map(recalcRow) : [createProductRow()] }
 function getPaymentAmounts(type, subtotal, delivery, grandTotal) { if (type === "full_online") return { onlineAmount: grandTotal, codAmount: 0 }; if (type === "delivery_only_online") return { onlineAmount: delivery, codAmount: subtotal }; return { onlineAmount: 0, codAmount: grandTotal } }
+function waitFrame() { return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))) }
 function getLegacyPaymentFields(order) { if (order.paymentType === "full_online") return { paymentMethod: order.productPaymentMethod || "bKash", paymentStatus: order.productPaymentStatus || "Unpaid", transactionId: order.productTransactionId || "" }; if (order.paymentType === "delivery_only_online") return { productPaymentMethod: "COD", productPaymentStatus: "Unpaid", paymentMethod: order.deliveryPaymentMethod || "bKash", paymentStatus: order.deliveryPaymentStatus === "Paid" ? "Partial" : "Unpaid", transactionId: order.deliveryTransactionId || "" }; return { paymentMethod: "COD", paymentStatus: "Unpaid", transactionId: "" } }
 
 export default NewOrder
