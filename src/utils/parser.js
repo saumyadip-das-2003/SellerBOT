@@ -1,4 +1,4 @@
-﻿import { fuzzyMatchSingle, matchProducts } from "./fuzzyMatcher.js"
+import { fuzzyMatchSingle, matchProducts } from "./fuzzyMatcher.js"
 import { detectZone } from "./zoneDetector.js"
 
 export function convertBanglaToEnglish(str = "") {
@@ -8,11 +8,11 @@ export function convertBanglaToEnglish(str = "") {
 }
 
 const phoneRegex = /(?:\+?88)?01[3-9]\d{8}/g
-const nameTriggers = ["নামঃ", "নাম:", "নাম :", "name:", "Name:", "customer:", "nam:", "buyer:"]
-const addressTriggers = ["ঠিকানাঃ", "ঠিকানা:", "ঠিকানা :", "address:", "Address:", "deliver to:", "delivery address:"]
-const phoneTriggers = ["মোবাইলঃ", "মোবাইল:", "mobile:", "phone:", "Mobile:", "নম্বরঃ", "নাম্বারঃ", "number:", "contact:"]
-const itemTriggers = ["আইটেমঃ", "আইটেম:", "item:", "items:", "পণ্যঃ", "পণ্য:", "product:", "Product:", "order:", "lagbe:", "লাগবেঃ", "লাগবে:"]
-const quantityTriggers = ["পরিমাণঃ", "পরিমাণ:", "quantity:", "Quantity:", "qty:", "Qty:", "পিসঃ", "পিস:"]
+const nameTriggers = ["নামঃ", "নাম:", "নাম :", "name:", "Name:", "name :", "customer:", "customer :", "nam:", "nam :", "buyer:", "amar nam:", "amar name:"]
+const addressTriggers = ["ঠিকানাঃ", "ঠিকানা:", "ঠিকানা :", "address:", "Address:", "address :", "thikana:", "thikana :", "deliver to:", "delivery address:"]
+const phoneTriggers = ["মোবাইলঃ", "মোবাইল:", "mobile:", "Mobile:", "mobile :", "phone:", "phone :", "নম্বরঃ", "নাম্বারঃ", "number:", "number :", "contact:", "contact :"]
+const itemTriggers = ["আইটেমঃ", "আইটেম:", "item:", "Item:", "item :", "items:", "পণ্যঃ", "পণ্য:", "product:", "Product:", "product :", "ponno:", "ponno :", "order:", "order :", "lagbe:", "লাগবেঃ", "লাগবে:"]
+const quantityTriggers = ["পরিমাণঃ", "পরিমাণ:", "পরিমাণ :", "quantity:", "Quantity:", "quantity :", "qty:", "Qty:", "qty :", "poriman:", "poriman :", "পিসঃ", "পিস:"]
 const noteTriggers = ["note:", "Note:", "বিশেষ:", "special:", "important:", "please note:", "instruction:"]
 const addressWords = ["road", "lane", "street", "village", "gram", "para", "ward", "union", "upazila", "thana", "district", "house", "flat", "floor", "building", "tower", "bazar", "north", "south", "east", "west", "uttar", "dakkhin", "purbo", "paschim"]
 
@@ -25,17 +25,15 @@ export function parseProductQuantityPairs(chatText = "") {
   let currentProduct = null
 
   for (const line of lines) {
-    const productTrigger = itemTriggers.find((trigger) => line.toLowerCase().includes(trigger.toLowerCase()))
-    if (productTrigger) {
+    const productName = extractAfterAnyTrigger(line, itemTriggers)
+    if (productName) {
       if (currentProduct) products.push(currentProduct)
-      const productName = line.split(productTrigger)[1]?.trim().replace(/ঃ|:/g, "").trim()
-      currentProduct = productName ? { productName, quantity: 1 } : null
+      currentProduct = { productName, quantity: 1 }
       continue
     }
 
-    const quantityTrigger = quantityTriggers.find((trigger) => line.toLowerCase().includes(trigger.toLowerCase()))
-    if (quantityTrigger && currentProduct) {
-      const qtyText = line.split(quantityTrigger)[1]?.trim().replace(/ঃ|:/g, "").trim()
+    const qtyText = extractAfterAnyTrigger(line, quantityTriggers)
+    if (qtyText && currentProduct) {
       currentProduct.quantity = parseInt(convertBanglaToEnglish(qtyText), 10) || extractQuantity(qtyText)
     }
   }
@@ -61,6 +59,19 @@ export function parseChat(chatText = "", products = [], zones = []) {
   return parsedResult
 }
 
+function extractAfterAnyTrigger(line, triggers) {
+  const trimmed = line.trim()
+  for (const trigger of triggers) {
+    const escaped = escapeRegExp(trigger.trim())
+    const match = trimmed.match(new RegExp(`^\\s*${escaped}\\s*(.*)$`, "i"))
+    if (match?.[1]) return match[1].replace(/^[:ঃ\s]+/, "").trim() || null
+  }
+  return null
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+}
 function parseLines(originalText, convertedText) {
   const originalLines = originalText.split(/\r?\n/)
   const convertedLines = convertedText.split(/\r?\n/)
@@ -80,8 +91,7 @@ function parseLines(originalText, convertedText) {
 }
 
 function extractAfterLineTrigger(line, triggers) {
-  const trigger = triggers.find((item) => line.toLowerCase().startsWith(item.toLowerCase()))
-  return trigger ? line.slice(trigger.length).trim() || null : null
+  return extractAfterAnyTrigger(line, triggers)
 }
 
 export function calculateConfidence(parsedResult) {

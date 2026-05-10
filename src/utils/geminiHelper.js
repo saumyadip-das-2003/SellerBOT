@@ -1,4 +1,4 @@
-﻿import { GoogleGenerativeAI } from "@google/generative-ai"
+import { GoogleGenerativeAI } from "@google/generative-ai"
 
 function getModel() {
   if (!import.meta.env.VITE_GEMINI_API_KEY) {
@@ -15,69 +15,91 @@ export async function convertToStructured(chatText, productCatalog = [], zones =
   const productList = productCatalog.map((p) => `${p.name}${p.banglaName ? "/" + p.banglaName : ""}`).join(", ")
   const zoneList = zones.map((z) => z.area).join(", ")
   const prompt = `
-You are an AI assistant for a Bangladeshi F-commerce (Facebook/WhatsApp) seller.
+You are SellerBot's order pre-processor for Bangladeshi F-commerce sellers.
 
-A customer sent an unstructured chat message.
-Extract order information accurately.
+TASK:
+Convert the customer's UNSTRUCTURED chat into one clean STRUCTURED ORDER object.
+The chat may be Bangla, English, or Banglish. Understand the meaning first, then output JSON only.
 
-Language: May be Bangla, English, or Banglish.
+SELLER PRODUCTS:
+${productList || "No products listed"}
 
-KEY BANGLISH PATTERNS:
-Name patterns:
-- "ami X" = I am X → name is X
-- "ami X," = I am X → name is X (ignore comma)
-- "amar nam X" = my name is X
-- "ami X boltesi" = I am saying, I am X
-- Never include vai/bhai/apu/apa/ভাই in name
+DELIVERY ZONES:
+${zoneList || "No zones listed"}
 
-Location patterns:
-- "X e thaki" = I live in X → address is X
-- "X te thaki" = I live in X → address is X
-- "X theke" = from X → address is X
-- "X e achi" = I am in X → address is X
-- "X তে থাকি" = I live in X
-- Extract X as the address
+USE THESE STRUCTURED FORMATS AS THE TARGET MEANING:
 
-Quantity patterns:
-- "Xta" = X pieces (2ta=2, 3ta=3)
-- "X piece/pcs/nos" = X pieces
-- "ekta/একটা" = 1
-- "duita/দুইটা" = 2
-- "tinta/তিনটা" = 3
-- "ar/and/+" separates multiple products
-  "2ta shirt ar 1ta pant" = shirt:2, pant:1
+BANGLA TEMPLATE:
+নামঃ customer name
+মোবাইলঃ 01XXXXXXXXX
+ঠিকানাঃ full delivery address
+পণ্যঃ first product name
+পরিমাণঃ quantity
+পণ্যঃ second product name
+পরিমাণঃ quantity
+পেমেন্টঃ COD/bKash/Nagad/Rocket/Bank/Other
+নোটঃ optional instruction
 
-Payment patterns:
-- "bkash/bikash/বিকাশ korbo/dibo" = bKash
-- "nagad/নগদ e dibo" = Nagad
-- "rocket" = Rocket
-- "cash/cod" = COD
+ENGLISH TEMPLATE:
+Name: customer name
+Mobile: 01XXXXXXXXX
+Address: full delivery address
+Product: first product name
+Quantity: quantity
+Product: second product name
+Quantity: quantity
+Payment: COD/bKash/Nagad/Rocket/Bank/Other
+Note: optional instruction
 
-SELLER PRODUCTS: ${productList}
-DELIVERY ZONES: ${zoneList}
+BANGLISH TEMPLATE:
+nam: customer name
+mobile: 01XXXXXXXXX
+thikana: full delivery address
+ponno/product: product name
+poriman/qty: quantity
+payment: COD/bKash/Nagad/Rocket/Bank/Other
+note: optional instruction
+
+BANGLISH MEANING RULES:
+- "ami X" / "ami X," / "ami X boltesi" means customerName is X.
+- "amar nam X" means customerName is X.
+- Never include vai, bhai, apu, apa, ভাই, আপু, আপা in customerName.
+- "X e thaki", "X te thaki", "X theke", "X e achi", "X তে থাকি" means address/location is X.
+- Keep the address exactly as the customer wrote it when possible.
+- "lagbe", "chai", "nibo", "নেব", "চাই" means the customer wants to order.
+- "ar", "and", "+", "আর" separates multiple products.
+- "2ta shirt ar 1ta pant" means shirt quantity 2 and pant quantity 1.
+- ekta/একটা=1, duita/দুইটা=2, tinta/তিনটা=3, charta=4, pachta=5.
+- 2ta/২টা, 2 pcs, 2 piece, 2 nos all mean quantity 2.
+- bkash/bikash/বিকাশ korbo/dibo means bKash.
+- nagad/নগদ e dibo means Nagad.
+- rocket/রকেট means Rocket.
+- cash/COD means COD.
+
+IMPORTANT PRODUCT RULES:
+- Match products to the closest SELLER PRODUCTS name/tag/Bangla name.
+- Return one product object per product mentioned.
+- Quantity must be separate per product.
+- If quantity is not mentioned for a product, use 1.
+- Do not invent products that are not in the chat.
 
 CUSTOMER CHAT:
 """
 ${chatText}
 """
 
-RULES:
-1. Extract customer name WITHOUT vai/bhai/apu/apa
-2. Extract full address EXACTLY as mentioned
-3. Match each product to closest in catalog
-4. Quantity must be per product separately
-5. If something not found → use null
+Return ONLY valid JSON. No markdown. No explanation.
+Use null when a field is missing.
 
-Return ONLY valid JSON, no explanation:
 {
   "customerName": "string or null",
   "phone": "11 digit string or null",
-  "address": "full address string or null",
-  "zone": "zone name from list or null",
+  "address": "complete address exactly as mentioned or null",
+  "zone": "closest zone name from DELIVERY ZONES or null",
   "products": [
     {
-      "productName": "matched catalog name",
-      "quantity": number
+      "productName": "closest seller product name or extracted product name",
+      "quantity": 1
     }
   ],
   "paymentMethod": "COD|bKash|Nagad|Rocket|Bank|Other",
@@ -121,8 +143,8 @@ function mergeWithFallback(parsed, fallback) {
     phone: parsed.phone || fallback.phone || null,
     address: parsed.address || fallback.address || null,
     zone: parsed.zone || fallback.zone || null,
-    products: fallback.products?.length ? fallback.products : parsed.products || [],
-    paymentMethod: fallback.paymentMethod || parsed.paymentMethod || "COD",
+    products: parsed.products?.length ? parsed.products : fallback.products || [],
+    paymentMethod: choosePaymentMethod(parsed.paymentMethod, fallback.paymentMethod),
     deliveryPaymentMethod: parsed.deliveryPaymentMethod || fallback.deliveryPaymentMethod || null,
     transactionId: parsed.transactionId || fallback.transactionId || null,
     notes: parsed.notes || fallback.notes || null,
@@ -131,6 +153,11 @@ function mergeWithFallback(parsed, fallback) {
   return sanitizeStructuredResult(merged)
 }
 
+function choosePaymentMethod(parsedMethod, fallbackMethod) {
+  if (parsedMethod && parsedMethod !== "COD") return parsedMethod
+  if (fallbackMethod && fallbackMethod !== "COD") return fallbackMethod
+  return parsedMethod || fallbackMethod || "COD"
+}
 function sanitizeStructuredResult(result) {
   if (!result) return null
   const phone = normalizePhone(result.phone)

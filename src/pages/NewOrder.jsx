@@ -15,10 +15,117 @@ import { convertBanglaToEnglish, parseChat, parseProductQuantityPairs } from "..
 import { printInvoiceElement } from "../utils/printInvoice.js"
 import { detectZone } from "../utils/zoneDetector.js"
 
-const banglaTemplate = `আমাদের কাছে অর্ডার করতে নিচের ফরম্যাটে মেসেজ করুন:\n\nনামঃ (আপনার নাম)\nমোবাইলঃ (আপনার নম্বর)\nঠিকানাঃ (সম্পূর্ণ ঠিকানা)\n\nপণ্যঃ (প্রথম পণ্যের নাম)\nপরিমাণঃ (সংখ্যা)\n\nপণ্যঃ (দ্বিতীয় পণ্যের নাম)\nপরিমাণঃ (সংখ্যা)\n\nউদাহরণঃ\nনামঃ রহিম মিয়া\nমোবাইলঃ ০১৭১২৩৪৫৬৭৮\nঠিকানাঃ মিরপুর ১০, ঢাকা ১২১৬\n\nপণ্যঃ নীল শার্ট\nপরিমাণঃ ২\n\nপণ্যঃ কালো প্যান্ট\nপরিমাণঃ ১`
-const englishTemplate = `To place an order please message us:\n\nName: (your name)\nMobile: (your number)\nAddress: (full address)\n\nProduct: (first product name)\nQuantity: (number)\n\nProduct: (second product name)\nQuantity: (number)\n\nExample:\nName: Rahim Mia\nMobile: 01712345678\nAddress: Mirpur 10, Dhaka 1216\n\nProduct: Blue Shirt\nQuantity: 2\n\nProduct: Black Pant\nQuantity: 1`
-const structuredPlaceholder = `নামঃ রহিম মিয়া\nমোবাইলঃ ০১৭১২৩৪৫৬৭৮\nঠিকানাঃ মিরপুর ১০, ঢাকা\n\nপণ্যঃ নীল শার্ট\nপরিমাণঃ ২\n\nপণ্যঃ কালো প্যান্ট\nপরিমাণঃ ১`
-const unstructuredPlaceholder = `vai asalamu alaikum\nami karim, sylhet e thaki\n2ta shirt ar 1ta pant lagbe\nnagad e dibo\n01812345678\n\n(Paste any chat — AI will understand it)`
+const banglaTemplate = `আমাদের কাছে অর্ডার করতে নিচের ফরম্যাটে মেসেজ করুন:
+
+নামঃ (আপনার নাম)
+মোবাইলঃ (আপনার নম্বর)
+ঠিকানাঃ (সম্পূর্ণ ঠিকানা)
+
+পণ্যঃ (প্রথম পণ্যের নাম)
+পরিমাণঃ (সংখ্যা)
+
+পণ্যঃ (দ্বিতীয় পণ্যের নাম)
+পরিমাণঃ (সংখ্যা)
+
+পেমেন্টঃ (COD / bKash / Nagad)
+নোটঃ (যদি থাকে)
+
+উদাহরণঃ
+নামঃ রহিম মিয়া
+মোবাইলঃ ০১৭১২৩৪৫৬৭৮
+ঠিকানাঃ মিরপুর ১০, ঢাকা ১২১৬
+
+পণ্যঃ নীল শার্ট
+পরিমাণঃ ২
+
+পণ্যঃ কালো প্যান্ট
+পরিমাণঃ ১
+
+পেমেন্টঃ Nagad`
+const englishTemplate = `To place an order, please message us in this format:
+
+Name: (your name)
+Mobile: (your number)
+Address: (full address)
+
+Product: (first product name)
+Quantity: (number)
+
+Product: (second product name)
+Quantity: (number)
+
+Payment: (COD / bKash / Nagad)
+Note: (optional)
+
+Example:
+Name: Rahim Mia
+Mobile: 01712345678
+Address: Mirpur 10, Dhaka 1216
+
+Product: Blue Shirt
+Quantity: 2
+
+Product: Black Pant
+Quantity: 1
+
+Payment: Nagad`
+const banglishTemplate = `Order korte ei format e message korun:
+
+Nam: (apnar nam)
+Mobile: (apnar number)
+Thikana: (full address)
+
+Product: (prothom product name)
+Quantity: (number)
+
+Product: (ditiyo product name)
+Quantity: (number)
+
+Payment: (COD / bKash / Nagad)
+Note: (optional)
+
+Example:
+Nam: Karim
+Mobile: 01812345678
+Thikana: Sylhet sadar
+
+Product: Shirt
+Quantity: 2
+
+Product: Pant
+Quantity: 1
+
+Payment: Nagad`
+const structuredPlaceholder = `Bangla:
+নামঃ রহিম মিয়া
+মোবাইলঃ ০১৭১২৩৪৫৬৭৮
+ঠিকানাঃ মিরপুর ১০, ঢাকা
+
+পণ্যঃ নীল শার্ট
+পরিমাণঃ ২
+
+English:
+Name: Rahim Mia
+Mobile: 01712345678
+Address: Mirpur 10, Dhaka
+
+Product: Blue Shirt
+Quantity: 2
+
+Banglish:
+Nam: Karim
+Mobile: 01812345678
+Thikana: Sylhet sadar
+
+Product: Shirt
+Quantity: 2`
+const unstructuredPlaceholder = `vai asalamu alaikum
+ami karim, sylhet e thaki
+2ta shirt ar 1ta pant lagbe
+nagad e dibo
+01812345678
+
+(Paste any chat - AI will understand it)`
 const onlineMethods = ["bKash", "Nagad", "Rocket", "Bank", "Other"]
 const deliveryMethods = ["bKash", "Nagad", "Rocket"]
 const structuredSteps = ["Reading structured chat...", "Matching products to catalog...", "Detecting delivery zone...", "Done!"]
@@ -171,7 +278,7 @@ function NewOrder() {
 function ChatStage({ chatText, chatType, loadingSteps, loadingMessage, onChatChange, onChatTypeChange, onParse }) {
   const isStructured = chatType === "structured"
   const copyFormat = async () => {
-    await navigator.clipboard.writeText(`${banglaTemplate}\n\n---\n\n${englishTemplate}`)
+    await navigator.clipboard.writeText(`${banglaTemplate}\n\n--- ENGLISH ---\n\n${englishTemplate}\n\n--- BANGLISH ---\n\n${banglishTemplate}`)
     toast.success("Order format copied.")
   }
 
