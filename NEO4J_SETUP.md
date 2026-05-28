@@ -1,4 +1,4 @@
-﻿# Neo4j AuraDB Setup
+# Neo4j AuraDB Setup
 
 1. Go to https://neo4j.com/cloud/aura
 2. Click "Start Free"
@@ -26,3 +26,12 @@ VITE_NEO4J_PASSWORD=...
 ## Notes
 
 SellerBot writes graph data when an order is saved. Existing Firestore orders will not appear in Neo4j until they are re-saved or a backfill script is added later.
+## Serverless API variables
+
+The React app calls Vercel API routes. Add these non-VITE variables to Vercel Environment Variables for the serverless functions:
+
+```env
+NEO4J_URI=neo4j+s://...
+NEO4J_USER=neo4j
+NEO4J_PASSWORD=...
+```
