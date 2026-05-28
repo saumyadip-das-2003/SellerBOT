@@ -1,4 +1,4 @@
-﻿import neo4j from "neo4j-driver"
+const neo4j = require("neo4j-driver")
 
 const driver = neo4j.driver(
   process.env.NEO4J_URI,
@@ -8,7 +8,7 @@ const driver = neo4j.driver(
   ),
 )
 
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" })
   }
