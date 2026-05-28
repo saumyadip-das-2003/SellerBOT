@@ -11,6 +11,7 @@ import { db } from "../firebase/config.js"
 import { applyCorrections, saveCorrection } from "../utils/correctionMemory.js"
 import { fuzzyMatchSingle } from "../utils/fuzzyMatcher.js"
 import { convertToStructuredText } from "../utils/geminiHelper.js"
+import { getCustomerHistory, getFrequentlyBoughtTogether, saveOrderToGraph } from "../utils/graphDB.js"
 import { parseChat, parseProductQuantityPairs } from "../utils/parser.js"
 import { printInvoiceElement } from "../utils/printInvoice.js"
 import { searchProductsByVector, searchZonesByVector } from "../utils/ragOperations.js"
@@ -148,6 +149,7 @@ function NewOrder() {
   const [order, setOrder] = useState(createEmptyOrder())
   const [orderNumber] = useState(() => `SB-${String(Date.now()).slice(-8)}`)
   const [saving, setSaving] = useState(false)
+  const [graphRecommendations, setGraphRecommendations] = useState([])
 
   const subtotal = useMemo(() => order.products.reduce((sum, item) => sum + Number(item.totalPrice || 0), 0), [order.products])
   const totalCost = useMemo(() => order.products.reduce((sum, item) => sum + Number(item.costPrice || 0) * Number(item.quantity || 1), 0), [order.products])
@@ -261,10 +263,27 @@ function NewOrder() {
       }
 
       parsedResult = await applyCorrections(currentUser.uid, parsedResult, chatText)
+
+      if (parsedResult.phone) {
+        const history = await getCustomerHistory(currentUser.uid, parsedResult.phone)
+        if (history) {
+          parsedResult.customerName = parsedResult.customerName || history.name
+          parsedResult.address = parsedResult.address || history.address
+          parsedResult.graphInsight = {
+            isReturningCustomer: true,
+            orderCount: history.orderCount,
+            totalSpent: history.totalSpent,
+            lastOrder: history.lastOrder,
+          }
+        }
+      }
       completeSteps()
       const selectedZone = parsedResult.detectedZone || (typeof parsedResult.zone === "object" ? parsedResult.zone : null)
       const initialPaymentType = parsedResult.paymentMethod && parsedResult.paymentMethod !== "COD" ? "full_online" : "full_cod"
-      setOrder({ ...createEmptyOrder(), customerName: parsedResult.customerName || "", phone: parsedResult.phone || "", address: parsedResult.address || "", zoneId: selectedZone?.id || "", zone: selectedZone?.area || "", zoneAutoDetected: Boolean(selectedZone?.autoDetected), zoneIsFallback: Boolean(selectedZone?.isFallback), zoneDetectionMethod: selectedZone?.detectionMethod || "", zoneSimilarity: selectedZone?.similarity || 0, deliveryCharge: parsedResult.deliveryCharge || 0, products: normalizeProductRows(parsedResult.products), paymentType: initialPaymentType, productPaymentMethod: parsedResult.paymentMethod || "COD", productTransactionId: parsedResult.transactionId || "", deliveryPaymentMethod: parsedResult.deliveryPaymentMethod || "bKash", deliveryTransactionId: parsedResult.transactionId || "", notes: parsedResult.notes || "" })
+      const normalizedProducts = normalizeProductRows(parsedResult.products)
+      const recommendations = normalizedProducts[0]?.productName ? await getFrequentlyBoughtTogether(currentUser.uid, normalizedProducts[0].productName, 3) : []
+      setGraphRecommendations(recommendations)
+      setOrder({ ...createEmptyOrder(), customerName: parsedResult.customerName || "", phone: parsedResult.phone || "", address: parsedResult.address || "", zoneId: selectedZone?.id || "", zone: selectedZone?.area || "", zoneAutoDetected: Boolean(selectedZone?.autoDetected), zoneIsFallback: Boolean(selectedZone?.isFallback), zoneDetectionMethod: selectedZone?.detectionMethod || "", zoneSimilarity: selectedZone?.similarity || 0, deliveryCharge: parsedResult.deliveryCharge || 0, products: normalizedProducts, graphInsight: parsedResult.graphInsight || null, paymentType: initialPaymentType, productPaymentMethod: parsedResult.paymentMethod || "COD", productTransactionId: parsedResult.transactionId || "", deliveryPaymentMethod: parsedResult.deliveryPaymentMethod || "bKash", deliveryTransactionId: parsedResult.transactionId || "", notes: parsedResult.notes || "" })
       setParsedBy(parsedResult.parsedBy)
       setStage(2)
     } catch (error) {
@@ -286,15 +305,16 @@ function NewOrder() {
   }
   const updateProductRow = (index, field, value) => setOrder((current) => ({ ...current, products: current.products.map((row, rowIndex) => rowIndex === index ? recalcRow(updateRowFromField(row, field, value, products)) : row) }))
   const addProductRow = () => setOrder((current) => ({ ...current, products: [...current.products, createProductRow()] }))
+  const addRecommendedProduct = (productName) => setOrder((current) => ({ ...current, products: [...current.products, buildProductRow(productName, 1, products)] }))
   const removeProductRow = (index) => setOrder((current) => ({ ...current, products: current.products.filter((_, rowIndex) => rowIndex !== index) }))
 
   const handlePDFDownload = async () => { const canvas = await html2canvas(invoiceRef.current, { scale: 2 }); const pdf = new jsPDF("p", "mm", "a4"); const width = pdf.internal.pageSize.getWidth(); pdf.addImage(canvas.toDataURL("image/png"), "PNG", 0, 0, width, (canvas.height * width) / canvas.width); pdf.save(`SellerBot-Invoice-${orderNumber}.pdf`) }
   const handleImageDownload = async () => { const canvas = await html2canvas(invoiceRef.current, { scale: 2 }); const link = document.createElement("a"); link.download = `SellerBot-Invoice-${orderNumber}.png`; link.href = canvas.toDataURL("image/png"); link.click() }
   const handlePrintInvoice = async () => { await printInvoiceElement(invoiceRef.current) }
-  const saveSale = async () => { try { setSaving(true); await addDoc(collection(db, "users", currentUser.uid, "orders"), { ...enrichedOrder, orderNumber, invoiceURL: "", createdAt: serverTimestamp() }); toast.success("Order saved and sale recorded."); navigate("/sales") } catch (error) { toast.error(error.message || "Could not save order.") } finally { setSaving(false) } }
+  const saveSale = async () => { try { setSaving(true); const confirmedOrder = { ...enrichedOrder, orderNumber, invoiceURL: "" }; await addDoc(collection(db, "users", currentUser.uid, "orders"), { ...confirmedOrder, createdAt: serverTimestamp() }); await saveOrderToGraph(currentUser.uid, confirmedOrder); toast.success("Order saved and sale recorded."); navigate("/sales") } catch (error) { toast.error(error.message || "Could not save order.") } finally { setSaving(false) } }
 
   if (stage === 1) return <ChatStage chatText={chatText} chatType={chatType} loadingSteps={loadingSteps} loadingMessage={loadingMessage} onChatChange={setChatText} onChatTypeChange={setChatType} onParse={handleParseChat} />
-  if (stage === 2) return <ReviewStage order={order} products={products} zones={zones} subtotal={subtotal} grandTotal={grandTotal} paymentAmounts={paymentAmounts} parsedBy={parsedBy} onAddProduct={addProductRow} onBack={() => setStage(1)} onGenerate={() => setStage(3)} onProductRemove={removeProductRow} onProductUpdate={updateProductRow} onUpdate={updateOrder} onZoneChange={updateZone} />
+  if (stage === 2) return <ReviewStage order={order} products={products} zones={zones} subtotal={subtotal} grandTotal={grandTotal} paymentAmounts={paymentAmounts} parsedBy={parsedBy} onAddProduct={addProductRow} onBack={() => setStage(1)} onGenerate={() => setStage(3)} onProductRemove={removeProductRow} onProductUpdate={updateProductRow} onRecommendationAdd={addRecommendedProduct} recommendations={graphRecommendations} onUpdate={updateOrder} onZoneChange={updateZone} />
   return <section className="space-y-6"><div className="flex items-center justify-between"><h2 className="text-3xl font-semibold">Invoice Preview</h2><button className="btn-outline" onClick={() => setStage(2)}><ArrowLeft className="mr-2 inline h-4 w-4" />Back to Edit</button></div><InvoiceTemplate ref={invoiceRef} order={{ ...enrichedOrder, orderNumber }} shop={shop} /><div className="grid gap-3 sm:grid-cols-4"><button className="btn-outline" onClick={handlePDFDownload}><FileDown className="mr-2 inline h-4 w-4" />Download PDF</button><button className="btn-outline" onClick={handleImageDownload}><ImageDown className="mr-2 inline h-4 w-4" />Download Image</button><button className="btn-outline" onClick={handlePrintInvoice}><Printer className="mr-2 inline h-4 w-4" />Print Invoice</button><button className="btn-primary" onClick={saveSale} disabled={saving}>{saving ? "Saving..." : "Save & Record Sale"}</button></div></section>
 }
 
@@ -314,7 +334,76 @@ function ChatTypeCard({ active, badge, badgeClass, color, desc, icon: Icon, titl
 }
 
 function LoadingSteps({ steps }) { return <div className="rounded-lg border border-slate-200 bg-white p-4"><div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">{steps.map((step) => <div key={step.label} className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium ${step.status === "done" ? "bg-emerald-50 text-emerald-800" : step.status === "current" ? "bg-slate-100 text-slate-900" : "bg-white text-slate-400"}`}>{step.status === "done" ? <Check className="h-4 w-4" /> : step.status === "current" ? <Loader2 className="h-4 w-4 animate-spin" /> : <span className="h-4 w-4 rounded-full border border-slate-300" />}{step.label}</div>)}</div></div> }
-function ReviewStage(props) { const { order, products, zones, subtotal, grandTotal, paymentAmounts, parsedBy, onAddProduct, onBack, onGenerate, onProductRemove, onProductUpdate, onUpdate, onZoneChange } = props; return <section className="space-y-6"><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="text-3xl font-semibold">Review Order</h2><ParseBadge parsedBy={parsedBy} /></div><button className="btn-outline" onClick={onBack}>Back to Chat</button></div><Card title="Customer Info"><div className="grid gap-4 md:grid-cols-2"><Input label="Customer Name" value={order.customerName} onChange={(v) => onUpdate("customerName", v)} /><Input label="Phone" value={order.phone} onChange={(v) => onUpdate("phone", v)} /></div><Textarea label="Full Address" value={order.address} onChange={(v) => onUpdate("address", v)} /><ZoneNotice order={order} /><Select label="Zone override" value={order.zoneId} onChange={onZoneChange} options={[{ label: "Select zone", value: "" }, ...zones.map((z) => ({ label: `${z.area} - ৳${z.charge}`, value: z.id }))]} /><Input label="Delivery Charge" type="number" value={order.deliveryCharge} onChange={(v) => onUpdate("deliveryCharge", Number(v))} /></Card><Card title="Products"><ProductTable rows={order.products} products={products} onAdd={onAddProduct} onRemove={onProductRemove} onUpdate={onProductUpdate} /></Card><Card title="Order Summary"><SummaryLine label="Subtotal" value={subtotal} /><SummaryLine label="Delivery" value={order.deliveryCharge} /><Input label="Discount" type="number" value={order.discount} onChange={(v) => onUpdate("discount", Number(v))} /><div className="border-t pt-3 text-2xl font-bold text-[#1D9E75]">GRAND TOTAL: ৳{grandTotal}</div></Card><PaymentSection order={order} grandTotal={grandTotal} subtotal={subtotal} paymentAmounts={paymentAmounts} onUpdate={onUpdate} /><Card title="Notes"><Textarea label="Special Instructions" value={order.notes} onChange={(v) => onUpdate("notes", v)} /></Card><button className="btn-primary h-12 w-full text-lg" onClick={onGenerate}>Generate Invoice</button></section> }
+function ReviewStage(props) {
+  const {
+    order,
+    products,
+    zones,
+    subtotal,
+    grandTotal,
+    paymentAmounts,
+    parsedBy,
+    recommendations,
+    onAddProduct,
+    onBack,
+    onGenerate,
+    onProductRemove,
+    onProductUpdate,
+    onRecommendationAdd,
+    onUpdate,
+    onZoneChange,
+  } = props
+
+  return (
+    <section className="space-y-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-3xl font-semibold">Review Order</h2>
+          <ParseBadge parsedBy={parsedBy} />
+        </div>
+        <button className="btn-outline" onClick={onBack}>Back to Chat</button>
+      </div>
+
+      {order.graphInsight?.isReturningCustomer && <ReturningCustomerBanner insight={order.graphInsight} />}
+
+      <Card title="Customer Info">
+        <div className="grid gap-4 md:grid-cols-2">
+          <Input label="Customer Name" value={order.customerName} onChange={(v) => onUpdate("customerName", v)} />
+          <Input label="Phone" value={order.phone} onChange={(v) => onUpdate("phone", v)} />
+        </div>
+        <Textarea label="Full Address" value={order.address} onChange={(v) => onUpdate("address", v)} />
+        <ZoneNotice order={order} />
+        <Select label="Zone override" value={order.zoneId} onChange={onZoneChange} options={[{ label: "Select zone", value: "" }, ...zones.map((z) => ({ label: `${z.area} - ৳${z.charge}`, value: z.id }))]} />
+        <Input label="Delivery Charge" type="number" value={order.deliveryCharge} onChange={(v) => onUpdate("deliveryCharge", Number(v))} />
+      </Card>
+
+      <Card title="Products">
+        <ProductTable rows={order.products} products={products} onAdd={onAddProduct} onRemove={onProductRemove} onUpdate={onProductUpdate} />
+        <RecommendationChips recommendations={recommendations} baseProduct={order.products?.[0]?.productName} onAdd={onRecommendationAdd} />
+      </Card>
+
+      <Card title="Order Summary">
+        <SummaryLine label="Subtotal" value={subtotal} />
+        <SummaryLine label="Delivery" value={order.deliveryCharge} />
+        <Input label="Discount" type="number" value={order.discount} onChange={(v) => onUpdate("discount", Number(v))} />
+        <div className="border-t pt-3 text-2xl font-bold text-[#1D9E75]">GRAND TOTAL: ৳{grandTotal}</div>
+      </Card>
+
+      <PaymentSection order={order} grandTotal={grandTotal} subtotal={subtotal} paymentAmounts={paymentAmounts} onUpdate={onUpdate} />
+      <Card title="Notes"><Textarea label="Special Instructions" value={order.notes} onChange={(v) => onUpdate("notes", v)} /></Card>
+      <button className="btn-primary h-12 w-full text-lg" onClick={onGenerate}>Generate Invoice</button>
+    </section>
+  )
+}
+
+function ReturningCustomerBanner({ insight }) {
+  return <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-900">Returning Customer! {insight.orderCount} previous orders | Total spent: ৳{insight.totalSpent || 0}{insight.lastOrder ? ` | Last ordered: ${new Date(insight.lastOrder).toLocaleDateString("en-GB")}` : ""}</div>
+}
+
+function RecommendationChips({ recommendations = [], baseProduct, onAdd }) {
+  if (!recommendations.length) return null
+  return <div className="mt-4 rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm text-blue-950"><p className="font-semibold">Customers who bought {baseProduct} also bought:</p><div className="mt-2 flex flex-wrap gap-2">{recommendations.map((item) => <button key={item.productName} className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-blue-800 shadow-sm" type="button" onClick={() => onAdd(item.productName)}>{item.productName} ({item.frequency} times)</button>)}</div></div>
+}
 function ParseBadge({ parsedBy }) { if (parsedBy === "regex+rag") return <p className="mt-2 inline-flex rounded-full bg-emerald-50 px-3 py-1 text-sm font-semibold text-emerald-800">📋🔍 Structured + RAG Search</p>; if (parsedBy === "gemini+rag") return <p className="mt-2 inline-flex rounded-full bg-blue-50 px-3 py-1 text-sm font-semibold text-blue-800">🤖🔍 AI + RAG Search · Please review all fields carefully</p>; if (parsedBy === "gemini") return <p className="mt-2 inline-flex rounded-full bg-blue-50 px-3 py-1 text-sm font-semibold text-blue-800">🤖 AI Parsed · Please review all fields carefully</p>; if (parsedBy === "regex-fallback") return <p className="mt-2 inline-flex rounded-full bg-yellow-50 px-3 py-1 text-sm font-semibold text-yellow-800">⚠️ Basic Parse — review carefully</p>; return <p className="mt-2 inline-flex rounded-full bg-emerald-50 px-3 py-1 text-sm font-semibold text-emerald-800">📋 Structured Parse</p> }
 function PaymentSection({ order, grandTotal, subtotal, paymentAmounts, onUpdate }) { return <Card title="Payment"><div className="grid gap-3 md:grid-cols-3"><PaymentCard active={order.paymentType === "full_online"} icon={CreditCard} title="Full Payment Online" desc="Customer pays everything online" onClick={() => onUpdate("paymentType", "full_online")} /><PaymentCard active={order.paymentType === "delivery_only_online"} icon={Truck} title="Delivery Charge Online Only" desc="Delivery online, product COD" onClick={() => onUpdate("paymentType", "delivery_only_online")} /><PaymentCard active={order.paymentType === "full_cod"} icon={Wallet} title="Full COD" desc="Everything paid on delivery" onClick={() => onUpdate("paymentType", "full_cod")} /></div>{order.paymentType === "full_online" && <div className="grid gap-4 md:grid-cols-3"><Select label="Payment Method" value={order.productPaymentMethod} onChange={(v) => onUpdate("productPaymentMethod", v)} options={onlineMethods.map((m) => ({ label: m, value: m }))} /><Input label="Transaction ID" value={order.productTransactionId} onChange={(v) => onUpdate("productTransactionId", v)} /><Select label="Status" value={order.productPaymentStatus} onChange={(v) => onUpdate("productPaymentStatus", v)} options={["Paid", "Unpaid", "Partial"].map((s) => ({ label: s, value: s }))} /></div>}{order.paymentType === "delivery_only_online" && <div className="grid gap-4 md:grid-cols-2"><div className="rounded-md bg-emerald-50 p-3"><h4 className="font-semibold">Delivery Payment ৳{order.deliveryCharge}</h4><Select label="Delivery Method" value={order.deliveryPaymentMethod} onChange={(v) => onUpdate("deliveryPaymentMethod", v)} options={deliveryMethods.map((m) => ({ label: m, value: m }))} /><Input label="Delivery Transaction ID" value={order.deliveryTransactionId} onChange={(v) => onUpdate("deliveryTransactionId", v)} /><Select label="Delivery Status" value={order.deliveryPaymentStatus} onChange={(v) => onUpdate("deliveryPaymentStatus", v)} options={["Paid", "Unpaid"].map((s) => ({ label: s, value: s }))} /></div><div className="rounded-md bg-slate-50 p-3"><h4 className="font-semibold">Product Payment</h4><p>Method: COD</p><p>Status: Unpaid</p><p>Amount: ৳{subtotal}</p></div></div>}{order.paymentType === "full_cod" && <p className="rounded-md bg-slate-50 p-3 font-semibold">Status: Unpaid. Amount to collect on delivery: ৳{grandTotal}</p>}<p className="rounded-md bg-[#e8f8f3] p-3 font-semibold text-[#157a5c]">Online: ৳{paymentAmounts.onlineAmount} | On Delivery: ৳{paymentAmounts.codAmount}</p></Card> }
 function ProductTable({ rows, products, onAdd, onRemove, onUpdate }) { return <div className="overflow-x-auto"><table className="w-full min-w-[720px] text-sm"><thead><tr className="text-left"><th>Product</th><th>Qty</th><th>Unit Price</th><th>Total</th><th>Remove</th></tr></thead><tbody>{rows.map((row, index) => <tr key={index}><td><select className="h-10 w-full rounded-md border px-2" value={row.productId} onChange={(e) => onUpdate(index, "productId", e.target.value)}><option value="">Select product</option>{products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></td><td><input className="h-10 w-20 rounded-md border px-2" type="number" min="1" value={row.quantity} onChange={(e) => onUpdate(index, "quantity", e.target.value)} /></td><td><input className="h-10 w-28 rounded-md border px-2" type="number" value={row.unitPrice} onChange={(e) => onUpdate(index, "unitPrice", e.target.value)} /></td><td>৳{row.totalPrice}</td><td><button className="text-red-600" onClick={() => onRemove(index)}><Trash2 className="h-4 w-4" /></button></td></tr>)}</tbody></table><button className="btn-outline mt-4" onClick={onAdd}><Plus className="mr-2 inline h-4 w-4" />Add Product Row</button></div> }
@@ -329,7 +418,7 @@ async function fetchSellerData(uid) { const [productsSnapshot, zonesSnapshot, sh
 function buildProductRow(name, quantity, catalog) { const match = fuzzyMatchSingle(name, catalog); return { productId: match?.id || "", productName: match?.name || name || "", banglaName: match?.banglaName || "", quantity: Number(quantity || 1), unitPrice: match?.price || 0, costPrice: match?.costPrice || 0, totalPrice: (match?.price || 0) * Number(quantity || 1) } }
 function buildProductRowFromRag(pair, ragProducts, catalog) { const quantity = Number(pair.quantity || 1); const productName = String(pair.productName || "").toLowerCase(); const ragMatch = ragProducts.find((item) => item.similarity > 0.6 && (String(item.product_name || "").toLowerCase().includes(productName) || productName.includes(String(item.product_name || "").toLowerCase()))) || ragProducts[0]; if (!ragMatch) return buildProductRow(pair.productName, quantity, catalog); const unitPrice = Number(ragMatch.price || 0); return { productId: ragMatch.product_id || "", productName: ragMatch.product_name || pair.productName || "", banglaName: ragMatch.bangla_name || "", quantity, unitPrice, costPrice: Number(ragMatch.cost_price || 0), totalPrice: unitPrice * quantity, ragSimilarity: ragMatch.similarity || 0 } }
 function createProductRow() { return { productId: "", productName: "", banglaName: "", quantity: 1, unitPrice: 0, costPrice: 0, totalPrice: 0 } }
-function createEmptyOrder() { return { customerName: "", phone: "", address: "", zoneId: "", zone: "", zoneAutoDetected: false, zoneIsFallback: false, zoneDetectionMethod: "", zoneSimilarity: 0, deliveryCharge: 0, products: [createProductRow()], discount: 0, paymentType: "full_cod", productPaymentMethod: "COD", productPaymentStatus: "Unpaid", productTransactionId: "", deliveryPaymentMethod: "bKash", deliveryPaymentStatus: "Unpaid", deliveryTransactionId: "", paymentMethod: "COD", paymentStatus: "Unpaid", transactionId: "", notes: "" } }
+function createEmptyOrder() { return { customerName: "", phone: "", address: "", zoneId: "", zone: "", zoneAutoDetected: false, zoneIsFallback: false, zoneDetectionMethod: "", zoneSimilarity: 0, deliveryCharge: 0, products: [createProductRow()], graphInsight: null, discount: 0, paymentType: "full_cod", productPaymentMethod: "COD", productPaymentStatus: "Unpaid", productTransactionId: "", deliveryPaymentMethod: "bKash", deliveryPaymentStatus: "Unpaid", deliveryTransactionId: "", paymentMethod: "COD", paymentStatus: "Unpaid", transactionId: "", notes: "" } }
 function updateRowFromField(row, field, value, catalog) { if (field !== "productId") return { ...row, [field]: value }; const product = catalog.find((item) => item.id === value); return { ...row, productId: value, productName: product?.name || "", banglaName: product?.banglaName || "", unitPrice: product?.price || 0, costPrice: product?.costPrice || 0 } }
 function recalcRow(row) { const quantity = Number(row.quantity || 1); const unitPrice = Number(row.unitPrice || 0); return { ...row, quantity, unitPrice, totalPrice: quantity * unitPrice } }
 function normalizeProductRows(rows = []) { return rows.length ? rows.map(recalcRow) : [createProductRow()] }

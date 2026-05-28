@@ -21,6 +21,7 @@
         "html2canvas": "latest",
         "jspdf": "latest",
         "lucide-react": "latest",
+        "neo4j-driver": "^6.0.1",
         "react": "latest",
         "react-dom": "latest",
         "react-hot-toast": "latest",
