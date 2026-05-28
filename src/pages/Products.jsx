@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import {
   addDoc,
   collection,
@@ -10,10 +10,16 @@ import {
   serverTimestamp,
   updateDoc,
 } from "firebase/firestore"
-import { Edit2, PackagePlus, Search, Trash2, X } from "lucide-react"
+import { Edit2, PackagePlus, RefreshCw, Search, Trash2, X } from "lucide-react"
 import toast from "react-hot-toast"
 import { useAuth } from "../context/AuthContext.jsx"
 import { db } from "../firebase/config.js"
+import {
+  deleteProductEmbedding,
+  embedAndStoreProduct,
+  hasProductEmbeddings,
+  syncAllProductEmbeddings,
+} from "../utils/ragOperations.js"
 
 const initialForm = {
   name: "",
@@ -34,6 +40,9 @@ function Products() {
   const [editingProduct, setEditingProduct] = useState(null)
   const [formData, setFormData] = useState(initialForm)
   const [saving, setSaving] = useState(false)
+  const [ragActive, setRagActive] = useState(false)
+  const [syncing, setSyncing] = useState(false)
+  const [syncProgress, setSyncProgress] = useState("")
 
   useEffect(() => {
     if (!currentUser?.uid) {
@@ -64,6 +73,21 @@ function Products() {
 
     return unsubscribe
   }, [currentUser?.uid])
+
+  useEffect(() => {
+    if (!currentUser?.uid) {
+      setRagActive(false)
+      return undefined
+    }
+
+    let mounted = true
+    hasProductEmbeddings(currentUser.uid).then((active) => {
+      if (mounted) setRagActive(active)
+    })
+    return () => {
+      mounted = false
+    }
+  }, [currentUser?.uid, products.length])
 
   const filteredProducts = useMemo(() => {
     const term = searchTerm.trim().toLowerCase()
@@ -172,13 +196,23 @@ function Products() {
           editingProduct.id,
         )
         await updateDoc(productRef, payload)
+        const synced = await embedAndStoreProduct(currentUser.uid, {
+          id: editingProduct.id,
+          ...payload,
+        })
+        if (synced) setRagActive(true)
         toast.success("Product updated.")
       } else {
         const productsRef = collection(db, "users", currentUser.uid, "products")
-        await addDoc(productsRef, {
+        const productRef = await addDoc(productsRef, {
           ...payload,
           createdAt: serverTimestamp(),
         })
+        const synced = await embedAndStoreProduct(currentUser.uid, {
+          id: productRef.id,
+          ...payload,
+        })
+        if (synced) setRagActive(true)
         toast.success("Product added.")
       }
 
@@ -203,9 +237,31 @@ function Products() {
 
     try {
       await deleteDoc(doc(db, "users", currentUser.uid, "products", product.id))
+      await deleteProductEmbedding(currentUser.uid, product.id)
       toast.success("Product deleted.")
     } catch (error) {
       toast.error(error.message || "Could not delete product.")
+    }
+  }
+
+  const handleSyncAI = async () => {
+    if (!currentUser?.uid || products.length === 0) return
+
+    try {
+      setSyncing(true)
+      setSyncProgress(`Syncing 0/${products.length} products...`)
+      const result = await syncAllProductEmbeddings(
+        currentUser.uid,
+        products,
+        (done, total) => setSyncProgress(`Syncing ${done}/${total} products...`),
+      )
+      setRagActive(result.succeeded > 0)
+      toast.success(`AI search synced for ${result.succeeded}/${result.total} products.`)
+    } catch (error) {
+      toast.error(error.message || "Could not sync AI search.")
+    } finally {
+      setSyncing(false)
+      setSyncProgress("")
     }
   }
 
@@ -224,14 +280,30 @@ function Products() {
           </p>
         </div>
 
-        <button
-          className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-[#1D9E75] px-4 text-sm font-semibold text-white transition hover:bg-[#178765]"
-          type="button"
-          onClick={openAddModal}
-        >
-          <PackagePlus className="h-4 w-4" aria-hidden="true" />
-          Add Product
-        </button>
+        <div className="flex flex-wrap items-center gap-3">
+          <span className={`rounded-full px-3 py-1 text-xs font-semibold ${ragActive ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-800"}`}>
+            AI Search: {ragActive ? "Active" : "Not synced"}
+          </span>
+          {products.length > 0 && (
+            <button
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
+              type="button"
+              onClick={handleSyncAI}
+              disabled={syncing}
+            >
+              <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} aria-hidden="true" />
+              {syncing ? syncProgress || "Syncing..." : "Sync AI Search"}
+            </button>
+          )}
+          <button
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-[#1D9E75] px-4 text-sm font-semibold text-white transition hover:bg-[#178765]"
+            type="button"
+            onClick={openAddModal}
+          >
+            <PackagePlus className="h-4 w-4" aria-hidden="true" />
+            Add Product
+          </button>
+        </div>
       </div>
 
       <div className="flex items-center gap-3 rounded-md border border-slate-300 bg-white px-3 py-2.5 shadow-sm focus-within:border-[#1D9E75] focus-within:ring-2 focus-within:ring-[#1D9E75]/20">

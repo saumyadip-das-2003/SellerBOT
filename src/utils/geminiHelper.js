@@ -8,12 +8,16 @@ function getModel() {
   return new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY).getGenerativeModel({ model: "gemini-1.5-flash" })
 }
 
-export async function convertToStructured(chatText, productCatalog = [], zones = []) {
+export async function convertToStructured(chatText, productCatalog = [], zones = [], ragProducts = [], ragZones = []) {
   const model = getModel()
   if (!model) return convertBanglishFallback(chatText, productCatalog, zones)
 
-  const productList = productCatalog.map((p) => `${p.name}${p.banglaName ? "/" + p.banglaName : ""}`).join(", ")
-  const zoneList = zones.map((z) => z.area).join(", ")
+  const productList = ragProducts.length > 0
+    ? ragProducts.map((p) => `${p.product_name}${p.bangla_name ? "/" + p.bangla_name : ""} (৳${p.price}) [${Math.round((p.similarity || 0) * 100)}% match]`).join(", ")
+    : productCatalog.slice(0, 15).map((p) => `${p.name}${p.banglaName ? "/" + p.banglaName : ""} (৳${p.price})`).join(", ")
+  const zoneList = ragZones.length > 0
+    ? ragZones.map((z) => `${z.area} (৳${z.charge}) [${Math.round((z.similarity || 0) * 100)}% match]`).join(", ")
+    : zones.map((z) => z.area).join(", ")
   const prompt = `
 You are SellerBot's order pre-processor for Bangladeshi F-commerce sellers.
 
@@ -21,11 +25,13 @@ TASK:
 Convert the customer's UNSTRUCTURED chat into one clean STRUCTURED ORDER object.
 The chat may be Bangla, English, or Banglish. Understand the meaning first, then output JSON only.
 
-SELLER PRODUCTS:
+RAG pre-filtered products (most relevant):
 ${productList || "No products listed"}
 
-DELIVERY ZONES:
+RAG pre-filtered zones (most likely):
 ${zoneList || "No zones listed"}
+
+Prefer products and zones with higher match scores when RAG candidates are listed.
 
 USE THESE STRUCTURED FORMATS AS THE TARGET MEANING:
 
@@ -120,14 +126,16 @@ Use null when a field is missing.
   }
 }
 
-export async function convertToStructuredText(chatText, productCatalog = [], zones = []) {
+export async function convertToStructuredText(chatText, productCatalog = [], zones = [], ragProducts = [], ragZones = []) {
   const localFallback = structuredTextFromFallback(convertBanglishFallback(chatText, productCatalog, zones))
   const model = getModel()
 
-  const productList = productCatalog
-    .map((p) => `${p.name}${p.banglaName ? "/" + p.banglaName : ""}${p.tags?.length ? " (tags: " + p.tags.join(", ") + ")" : ""}`)
-    .join("\n")
-  const zoneList = zones.map((z) => `${z.area}${z.banglaArea ? "/" + z.banglaArea : ""}`).join(", ")
+  const productList = ragProducts.length > 0
+    ? ragProducts.map((p) => `${p.product_name}${p.bangla_name ? "/" + p.bangla_name : ""} (৳${p.price}) [${Math.round((p.similarity || 0) * 100)}% match]`).join("\n")
+    : productCatalog.slice(0, 15).map((p) => `${p.name}${p.banglaName ? "/" + p.banglaName : ""}${p.tags?.length ? " (tags: " + p.tags.join(", ") + ")" : ""}`).join("\n")
+  const zoneList = ragZones.length > 0
+    ? ragZones.map((z) => `${z.area}${z.bangla_area ? "/" + z.bangla_area : ""} (৳${z.charge}) [${Math.round((z.similarity || 0) * 100)}% match]`).join(", ")
+    : zones.slice(0, 15).map((z) => `${z.area}${z.banglaArea ? "/" + z.banglaArea : ""}`).join(", ")
 
   const prompt = `
 You are SellerBot's AI pre-formatter for Bangladeshi Facebook/WhatsApp sellers.
@@ -136,11 +144,13 @@ YOUR ONLY JOB:
 Convert the customer's messy UNSTRUCTURED chat into the exact STRUCTURED TEXT format below.
 Do not return JSON. Do not explain. Return only structured text with labels.
 
-SELLER PRODUCT CATALOG:
+RAG pre-filtered products (most relevant):
 ${productList || "No product catalog provided. Use product names from chat."}
 
-DELIVERY ZONES:
+RAG pre-filtered zones (most likely):
 ${zoneList || "No delivery zones provided."}
+
+Prefer products and zones with higher match scores when RAG candidates are listed.
 
 TARGET STRUCTURED FORMAT:
 Name: customer name or blank

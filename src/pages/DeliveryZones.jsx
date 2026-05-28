@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import {
   collection,
   deleteDoc,
@@ -19,6 +19,7 @@ import { useAuth } from "../context/AuthContext.jsx"
 import { districts } from "../data/districts.js"
 import { db } from "../firebase/config.js"
 import { detectZone } from "../utils/zoneDetector.js"
+import { deleteZoneEmbedding, embedAndStoreZone, syncAllZoneEmbeddings } from "../utils/ragOperations.js"
 
 const outsideKeywords = ["outside", "baire", "বাইরে", "gramer", "gram", "village", "গ্রাম", "union", "upazila", "char", "district", "rural", "remote"]
 const initialForm = { charge: "", keywords: "", isHomeCity: false, isOutsideBaseCity: false }
@@ -151,9 +152,12 @@ function DeliveryZones() {
       setSaving(true)
       if (editingZone) {
         await updateDoc(doc(db, "users", currentUser.uid, "deliveryZones", editingZone.id), payload)
+        await embedAndStoreZone(currentUser.uid, { id: editingZone.id, ...payload })
         toast.success("Delivery zone updated.")
       } else {
-        await setDoc(doc(collection(db, "users", currentUser.uid, "deliveryZones")), { ...payload, createdAt: serverTimestamp() })
+        const zoneRef = doc(collection(db, "users", currentUser.uid, "deliveryZones"))
+        await setDoc(zoneRef, { ...payload, createdAt: serverTimestamp() })
+        await embedAndStoreZone(currentUser.uid, { id: zoneRef.id, ...payload })
         toast.success("Delivery zone added.")
       }
       closeAfterSave()
@@ -175,6 +179,7 @@ function DeliveryZones() {
     if (!window.confirm(`Delete ${zone.area}? This cannot be undone.`)) return
     try {
       await deleteDoc(doc(db, "users", currentUser.uid, "deliveryZones", zone.id))
+      await deleteZoneEmbedding(currentUser.uid, zone.id)
       toast.success("Delivery zone deleted.")
     } catch (error) {
       toast.error(error.message || "Could not delete delivery zone.")
@@ -193,10 +198,12 @@ function DeliveryZones() {
       }
       const batch = writeBatch(db)
       const zonesRef = collection(db, "users", currentUser.uid, "deliveryZones")
+      const createdZones = []
       districts.forEach((district) => {
         const isHome = district.name === homeDistrict.name
         const charge = isHome ? 60 : district.division === homeDistrict.division ? 100 : 120
-        batch.set(doc(zonesRef), {
+        const zoneRef = doc(zonesRef)
+        const zonePayload = {
           area: district.name,
           banglaArea: district.bangla,
           division: district.division,
@@ -204,10 +211,12 @@ function DeliveryZones() {
           keywords: district.keywords,
           isHomeCity: isHome,
           isOutsideBaseCity: false,
-          createdAt: serverTimestamp(),
-        })
+        }
+        batch.set(zoneRef, { ...zonePayload, createdAt: serverTimestamp() })
+        createdZones.push({ id: zoneRef.id, ...zonePayload })
       })
-      batch.set(doc(zonesRef), {
+      const outsideRef = doc(zonesRef)
+      const outsidePayload = {
         area: `Outside ${homeDistrict.name}`,
         banglaArea: `${homeDistrict.bangla} এর বাইরে`,
         division: homeDistrict.division,
@@ -215,11 +224,13 @@ function DeliveryZones() {
         keywords: buildOutsideKeywords(homeDistrict),
         isHomeCity: false,
         isOutsideBaseCity: true,
-        createdAt: serverTimestamp(),
-      })
+      }
+      batch.set(outsideRef, { ...outsidePayload, createdAt: serverTimestamp() })
+      createdZones.push({ id: outsideRef.id, ...outsidePayload })
       await batch.commit()
       setBaseDistrict(homeDistrict)
-      toast.success("Delivery zones generated.")
+      const syncResult = await syncAllZoneEmbeddings(currentUser.uid, createdZones)
+      toast.success(`Delivery zones generated. AI search synced for ${syncResult.succeeded}/${syncResult.total} zones.`)
     } catch (error) {
       toast.error(error.message || "Could not run quick setup.")
     }
