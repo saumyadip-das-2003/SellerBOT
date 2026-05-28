@@ -1,7 +1,4 @@
-﻿-- Drop old tables and recreate with 1024 dims
--- Run this in Supabase SQL Editor, then re-sync products and zones in SellerBot.
-
-drop table if exists product_embeddings cascade;
+﻿drop table if exists product_embeddings cascade;
 drop table if exists zone_embeddings cascade;
 drop function if exists match_products;
 drop function if exists match_zones;
