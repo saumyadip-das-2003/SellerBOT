@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+﻿import { useEffect, useMemo, useState } from "react"
 import {
   addDoc,
   collection,
@@ -10,8 +10,9 @@ import {
   serverTimestamp,
   updateDoc,
 } from "firebase/firestore"
-import { Edit2, PackagePlus, RefreshCw, Search, Trash2, X } from "lucide-react"
+import { Download, Edit2, PackagePlus, RefreshCw, Search, Trash2, X } from "lucide-react"
 import toast from "react-hot-toast"
+import * as XLSX from "xlsx"
 import { useAuth } from "../context/AuthContext.jsx"
 import { db } from "../firebase/config.js"
 import { isEmbeddingAvailable } from "../utils/embeddings.js"
@@ -23,6 +24,7 @@ import {
 } from "../utils/ragOperations.js"
 
 const initialForm = {
+  productCode: "",
   name: "",
   banglaName: "",
   price: "",
@@ -100,6 +102,7 @@ function Products() {
 
     return products.filter((product) => {
       const searchableText = [
+        product.productCode,
         product.name,
         product.banglaName,
         ...(product.tags || []),
@@ -121,6 +124,7 @@ function Products() {
   const openEditModal = (product) => {
     setEditingProduct(product)
     setFormData({
+      productCode: product.productCode || "",
       name: product.name || "",
       banglaName: product.banglaName || "",
       price: String(product.price ?? ""),
@@ -144,17 +148,34 @@ function Products() {
 
   const handleChange = (event) => {
     const { name, value } = event.target
-    setFormData((current) => ({ ...current, [name]: value }))
+    setFormData((current) => ({ ...current, [name]: name === "productCode" ? value.toUpperCase().replace(/\s+/g, "") : value }))
   }
 
   const handleSave = async (event) => {
     event.preventDefault()
 
+    const productCode = formData.productCode.trim().toUpperCase()
     const name = formData.name.trim()
     const banglaName = formData.banglaName.trim()
     const price = Number(formData.price)
     const stock = Number(formData.stock)
     const costPrice = Number(formData.costPrice || 0)
+
+    if (!productCode) {
+      toast.error("Enter a product code.")
+      return
+    }
+
+    if (/\s/.test(productCode)) {
+      toast.error("Product code cannot contain spaces.")
+      return
+    }
+
+    const duplicate = products.find((product) => String(product.productCode || "").toUpperCase() === productCode && product.id !== editingProduct?.id)
+    if (duplicate) {
+      toast.error("Product code must be unique.")
+      return
+    }
 
     if (!name || !banglaName) {
       toast.error("Enter both English and Bangla product names.")
@@ -177,6 +198,7 @@ function Products() {
     }
 
     const payload = {
+      productCode,
       name,
       banglaName,
       price,
@@ -298,6 +320,15 @@ function Products() {
             </button>
           )}
           <button
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+            type="button"
+            onClick={() => exportInventoryToExcel(products)}
+            disabled={!products.length}
+          >
+            <Download className="h-4 w-4" aria-hidden="true" />
+            Export Inventory
+          </button>
+          <button
             className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-[#1D9E75] px-4 text-sm font-semibold text-white transition hover:bg-[#178765]"
             type="button"
             onClick={openAddModal}
@@ -315,7 +346,7 @@ function Products() {
           type="search"
           value={searchTerm}
           onChange={(event) => setSearchTerm(event.target.value)}
-          placeholder="Search by product name or tags"
+          placeholder="Search by product code, name, Bangla name, or tags"
         />
       </div>
 
@@ -373,9 +404,10 @@ function ProductCard({ product, onEdit, onDelete }) {
       <div>
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <h3 className="break-words text-xl font-semibold text-slate-950">
-              {product.name}
-            </h3>
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              {product.productCode && <span className="rounded bg-slate-900 px-2 py-1 text-xs font-bold text-white">[{product.productCode}]</span>}
+              <h3 className="break-words text-xl font-semibold text-slate-950">{product.name}</h3>
+            </div>
             <p className="mt-1 break-words text-sm font-medium text-[#1D9E75]">
               {product.banglaName}
             </p>
@@ -402,10 +434,7 @@ function ProductCard({ product, onEdit, onDelete }) {
             </div>
           </div>
 
-          <div className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-2">
-            <span className="font-medium text-slate-700">Stock</span>
-            <span className="font-semibold text-slate-950">{product.stock ?? 0}</span>
-          </div>
+          <StockBadge stock={product.stock ?? 0} />
         </div>
       </div>
 
@@ -456,6 +485,15 @@ function ProductModal({ formData, isEditing, saving, onChange, onClose, onSave }
         </div>
 
         <form className="space-y-5 px-5 py-5" onSubmit={onSave}>
+          <Field
+            label="Product Code / ID"
+            name="productCode"
+            value={formData.productCode}
+            onChange={onChange}
+            placeholder="e.g. RED-L, P001, SHIRT-BLU-32"
+            disabled={saving}
+            helper="Customers can use this code to order"
+          />
           <div className="grid gap-4 sm:grid-cols-2">
             <Field
               label="Product Name (English)"
@@ -553,10 +591,10 @@ function ProfitPreview({ price, costPrice }) {
   const cost = Number(costPrice || 0)
   const profit = selling - cost
   const margin = selling > 0 ? ((profit / selling) * 100).toFixed(1) : "0.0"
-  return <p className={`rounded-md px-3 py-2 text-sm font-semibold ${profit >= 0 ? "bg-emerald-50 text-emerald-800" : "bg-red-50 text-red-800"}`}>Profit per unit: ৳{profit || 0} ({margin}%)</p>
+  return <p className={`rounded-md px-3 py-2 text-sm font-semibold ${profit >= 0 ? "bg-emerald-50 text-emerald-800" : "bg-red-50 text-red-800"}`}>Profit per unit: à§³{profit || 0} ({margin}%)</p>
 }
 
-function Field({ label, name, value, onChange, type = "text", ...props }) {
+function Field({ label, name, value, onChange, type = "text", helper, ...props }) {
   return (
     <label className="block">
       <span className="text-sm font-medium text-slate-700">{label}</span>
@@ -568,10 +606,44 @@ function Field({ label, name, value, onChange, type = "text", ...props }) {
         onChange={onChange}
         {...props}
       />
+      {helper && <span className="mt-1 block text-xs text-slate-500">{helper}</span>}
     </label>
   )
 }
 
+function StockBadge({ stock }) {
+  const value = Number(stock || 0)
+  const className = value === 0
+    ? "bg-red-50 text-red-800"
+    : value <= 10
+      ? "bg-yellow-50 text-yellow-800"
+      : "bg-emerald-50 text-emerald-800"
+  const label = value === 0 ? "Out of Stock" : value <= 10 ? `Low Stock: ${value}` : `In Stock: ${value}`
+  const suffix = value === 0 ? " - Out" : value <= 10 ? " - Low" : ""
+  return <div className={`rounded-md px-3 py-2 text-sm font-semibold ${className}`}>{label}{suffix}</div>
+}
+
+function exportInventoryToExcel(products) {
+  const data = products.map((product) => {
+    const price = Number(product.price || 0)
+    const cost = Number(product.costPrice || 0)
+    return {
+      "Product Code": product.productCode || "-",
+      "Product Name": product.name,
+      "Bangla Name": product.banglaName || "-",
+      "Selling Price (৳)": price,
+      "Cost Price (৳)": cost,
+      "Profit (৳)": price - cost,
+      "Margin (%)": price > 0 ? (((price - cost) / price) * 100).toFixed(1) : 0,
+      Stock: product.stock || 0,
+      "Stock Value (৳)": (product.stock || 0) * cost,
+    }
+  })
+  const worksheet = XLSX.utils.json_to_sheet(data)
+  const workbook = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Inventory")
+  XLSX.writeFile(workbook, `SellerBot-Inventory-${new Date().toLocaleDateString("en-GB").replace(/\//g, "-")}.xlsx`)
+}
 function splitCommaList(value) {
   return value
     .split(",")
@@ -580,4 +652,6 @@ function splitCommaList(value) {
 }
 
 export default Products
+
+
 

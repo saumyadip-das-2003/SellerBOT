@@ -21,7 +21,8 @@
         "react-dom": "latest",
         "react-hot-toast": "latest",
         "react-router-dom": "latest",
-        "vite": "latest"
+        "vite": "latest",
+        "xlsx": "^0.18.5"
     },
     "devDependencies": {
         "@eslint/js": "latest",

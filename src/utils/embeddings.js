@@ -94,6 +94,7 @@ export async function generateBatchEmbeddings(texts) {
 
 export function prepareProductText(product) {
   return [
+    product.productCode || "",
     product.name || "",
     product.banglaName || "",
     (product.tags || []).join(" "),
@@ -121,4 +122,5 @@ export function prepareChatQueryText(chatText) {
 export function isEmbeddingAvailable() {
   return Boolean(import.meta.env.VITE_COHERE_API_KEY)
 }
+
 

@@ -1,23 +1,23 @@
-import { fuzzyMatchSingle, matchProducts } from "./fuzzyMatcher.js"
+﻿import { fuzzyMatchSingle, matchProducts } from "./fuzzyMatcher.js"
 import { detectZone } from "./zoneDetector.js"
 
 export function convertBanglaToEnglish(str = "") {
-  const banglaDigits = "০১২৩৪৫৬৭৮৯"
+  const banglaDigits = "à§¦à§§à§¨à§©à§ªà§«à§¬à§­à§®à§¯"
   const englishDigits = "0123456789"
-  return String(str).replace(/[০-৯]/g, (d) => englishDigits[banglaDigits.indexOf(d)])
+  return String(str).replace(/[à§¦-à§¯]/g, (d) => englishDigits[banglaDigits.indexOf(d)])
 }
 
 const phoneRegex = /(?:\+?88)?01[3-9]\d{8}/g
-const nameTriggers = ["নামঃ", "নাম:", "নাম :", "name:", "Name:", "name :", "customer:", "customer :", "nam:", "nam :", "buyer:", "amar nam:", "amar name:"]
-const addressTriggers = ["ঠিকানাঃ", "ঠিকানা:", "ঠিকানা :", "address:", "Address:", "address :", "thikana:", "thikana :", "deliver to:", "delivery address:"]
-const phoneTriggers = ["মোবাইলঃ", "মোবাইল:", "mobile:", "Mobile:", "mobile :", "phone:", "phone :", "নম্বরঃ", "নাম্বারঃ", "number:", "number :", "contact:", "contact :"]
-const itemTriggers = ["আইটেমঃ", "আইটেম:", "item:", "Item:", "item :", "items:", "পণ্যঃ", "পণ্য:", "product:", "Product:", "product :", "ponno:", "ponno :", "order:", "order :", "lagbe:", "লাগবেঃ", "লাগবে:"]
-const quantityTriggers = ["পরিমাণঃ", "পরিমাণ:", "পরিমাণ :", "quantity:", "Quantity:", "quantity :", "qty:", "Qty:", "qty :", "poriman:", "poriman :", "পিসঃ", "পিস:"]
-const noteTriggers = ["note:", "Note:", "বিশেষ:", "special:", "important:", "please note:", "instruction:"]
+const nameTriggers = ["à¦¨à¦¾à¦®à¦ƒ", "à¦¨à¦¾à¦®:", "à¦¨à¦¾à¦® :", "name:", "Name:", "name :", "customer:", "customer :", "nam:", "nam :", "buyer:", "amar nam:", "amar name:"]
+const addressTriggers = ["à¦ à¦¿à¦•à¦¾à¦¨à¦¾à¦ƒ", "à¦ à¦¿à¦•à¦¾à¦¨à¦¾:", "à¦ à¦¿à¦•à¦¾à¦¨à¦¾ :", "address:", "Address:", "address :", "thikana:", "thikana :", "deliver to:", "delivery address:"]
+const phoneTriggers = ["à¦®à§‹à¦¬à¦¾à¦‡à¦²à¦ƒ", "à¦®à§‹à¦¬à¦¾à¦‡à¦²:", "mobile:", "Mobile:", "mobile :", "phone:", "phone :", "à¦¨à¦®à§à¦¬à¦°à¦ƒ", "à¦¨à¦¾à¦®à§à¦¬à¦¾à¦°à¦ƒ", "number:", "number :", "contact:", "contact :"]
+const itemTriggers = ["à¦†à¦‡à¦Ÿà§‡à¦®à¦ƒ", "à¦†à¦‡à¦Ÿà§‡à¦®:", "item:", "Item:", "item :", "items:", "à¦ªà¦£à§à¦¯à¦ƒ", "à¦ªà¦£à§à¦¯:", "product:", "Product:", "product :", "ponno:", "ponno :", "order:", "order :", "lagbe:", "à¦²à¦¾à¦—à¦¬à§‡à¦ƒ", "à¦²à¦¾à¦—à¦¬à§‡:"]
+const quantityTriggers = ["à¦ªà¦°à¦¿à¦®à¦¾à¦£à¦ƒ", "à¦ªà¦°à¦¿à¦®à¦¾à¦£:", "à¦ªà¦°à¦¿à¦®à¦¾à¦£ :", "quantity:", "Quantity:", "quantity :", "qty:", "Qty:", "qty :", "poriman:", "poriman :", "à¦ªà¦¿à¦¸à¦ƒ", "à¦ªà¦¿à¦¸:"]
+const noteTriggers = ["note:", "Note:", "à¦¬à¦¿à¦¶à§‡à¦·:", "special:", "important:", "please note:", "instruction:"]
 const addressWords = ["road", "lane", "street", "village", "gram", "para", "ward", "union", "upazila", "thana", "district", "house", "flat", "floor", "building", "tower", "bazar", "north", "south", "east", "west", "uttar", "dakkhin", "purbo", "paschim"]
 
-const quantityMap = { ekta: 1, "একটা": 1, "একটি": 1, duita: 2, "দুইটা": 2, "দুটো": 2, tinta: 3, "তিনটা": 3, charta: 4, "চারটা": 4, pachta: 5, "পাঁচটা": 5, chota: 6, "ছয়টা": 6, satta: 7, "সাতটা": 7, atta: 8, "আটটা": 8, nota: 9, "নয়টা": 9, dosta: 10, "দশটা": 10 }
-const paymentKeywords = { bkash: "bKash", "বিকাশ": "bKash", bikash: "bKash", nagad: "Nagad", "নগদ": "Nagad", rocket: "Rocket", "রকেট": "Rocket", bank: "Bank", "ব্যাংক": "Bank", cash: "COD", "ক্যাশ": "COD", cod: "COD", upay: "uPay", cellfin: "Other" }
+const quantityMap = { ekta: 1, "à¦à¦•à¦Ÿà¦¾": 1, "à¦à¦•à¦Ÿà¦¿": 1, duita: 2, "à¦¦à§à¦‡à¦Ÿà¦¾": 2, "à¦¦à§à¦Ÿà§‹": 2, tinta: 3, "à¦¤à¦¿à¦¨à¦Ÿà¦¾": 3, charta: 4, "à¦šà¦¾à¦°à¦Ÿà¦¾": 4, pachta: 5, "à¦ªà¦¾à¦à¦šà¦Ÿà¦¾": 5, chota: 6, "à¦›à¦¯à¦¼à¦Ÿà¦¾": 6, satta: 7, "à¦¸à¦¾à¦¤à¦Ÿà¦¾": 7, atta: 8, "à¦†à¦Ÿà¦Ÿà¦¾": 8, nota: 9, "à¦¨à¦¯à¦¼à¦Ÿà¦¾": 9, dosta: 10, "à¦¦à¦¶à¦Ÿà¦¾": 10 }
+const paymentKeywords = { bkash: "bKash", "à¦¬à¦¿à¦•à¦¾à¦¶": "bKash", bikash: "bKash", nagad: "Nagad", "à¦¨à¦—à¦¦": "Nagad", rocket: "Rocket", "à¦°à¦•à§‡à¦Ÿ": "Rocket", bank: "Bank", "à¦¬à§à¦¯à¦¾à¦‚à¦•": "Bank", cash: "COD", "à¦•à§à¦¯à¦¾à¦¶": "COD", cod: "COD", upay: "uPay", cellfin: "Other" }
 
 export function parseProductQuantityPairs(chatText = "") {
   const lines = chatText.split("\n").map((line) => line.trim())
@@ -42,15 +42,60 @@ export function parseProductQuantityPairs(chatText = "") {
   return products
 }
 
+export function extractProductCodes(chatText = "", products = []) {
+  const matched = []
+  const usedCodes = new Set()
+  const chatUpper = convertBanglaToEnglish(chatText).toUpperCase()
+
+  for (const product of products) {
+    if (!product.productCode) continue
+    const code = String(product.productCode).toUpperCase()
+    if (!chatUpper.includes(code) || usedCodes.has(code)) continue
+
+    usedCodes.add(code)
+    const escapedCode = escapeRegExp(code)
+    const qtyPatterns = [
+      new RegExp(`${escapedCode}\\s*(\\d+)`, "i"),
+      new RegExp(`(\\d+)\\s*${escapedCode}`, "i"),
+      new RegExp(`${escapedCode}\\s*x\\s*(\\d+)`, "i"),
+      new RegExp(`(\\d+)\\s*x\\s*${escapedCode}`, "i"),
+      new RegExp(`${escapedCode}[^\\d]*(\\d+)\\s*(?:ta|টা|pcs|piece)`, "i"),
+    ]
+
+    let quantity = 1
+    for (const pattern of qtyPatterns) {
+      const match = chatUpper.match(pattern)
+      if (match) {
+        quantity = parseInt(match[1], 10) || 1
+        break
+      }
+    }
+
+    matched.push({
+      productId: product.id,
+      productCode: product.productCode,
+      productName: product.name,
+      banglaName: product.banglaName || "",
+      quantity,
+      unitPrice: product.price || 0,
+      costPrice: product.costPrice || 0,
+      totalPrice: (product.price || 0) * quantity,
+      matchedBy: "productCode",
+    })
+  }
+
+  return matched
+}
 export function parseChat(chatText = "", products = [], zones = []) {
   const convertedText = convertBanglaToEnglish(chatText)
   const lineParsed = parseLines(chatText, convertedText)
+  const codeProducts = extractProductCodes(chatText, products)
   const productPairs = parseProductQuantityPairs(chatText)
   const pairProducts = productPairs.map((pair) => {
     const match = fuzzyMatchSingle(pair.productName, products)
-    return { productId: match?.id || "", productName: match?.name || pair.productName, banglaName: match?.banglaName || "", quantity: pair.quantity || 1, unitPrice: match?.price || 0, costPrice: match?.costPrice || 0, totalPrice: (match?.price || 0) * (pair.quantity || 1) }
+    return { productId: match?.id || "", productCode: match?.productCode || "", productName: match?.name || pair.productName, banglaName: match?.banglaName || "", quantity: pair.quantity || 1, unitPrice: match?.price || 0, costPrice: match?.costPrice || 0, totalPrice: (match?.price || 0) * (pair.quantity || 1), matchedBy: match ? "fuzzy" : "manual" }
   })
-  const matchedProducts = pairProducts.length ? pairProducts : matchProducts(convertedText, products)
+  const matchedProducts = codeProducts.length ? codeProducts : pairProducts.length ? pairProducts : matchProducts(convertedText, products)
   const address = lineParsed.address || extractAddress(chatText)
   const zone = address ? detectZone(address, zones) : null
   const payment = extractPayment(convertedText)
@@ -64,7 +109,7 @@ function extractAfterAnyTrigger(line, triggers) {
   for (const trigger of triggers) {
     const escaped = escapeRegExp(trigger.trim())
     const match = trimmed.match(new RegExp(`^\\s*${escaped}\\s*(.*)$`, "i"))
-    if (match?.[1]) return match[1].replace(/^[:ঃ\s]+/, "").trim() || null
+    if (match?.[1]) return match[1].replace(/^[:à¦ƒ\s]+/, "").trim() || null
   }
   return null
 }
@@ -113,7 +158,7 @@ export function extractPhone(text = "") {
 export function extractQuantity(text = "") {
   const lower = convertBanglaToEnglish(text).toLowerCase()
   for (const [word, quantity] of Object.entries(quantityMap)) if (lower.includes(convertBanglaToEnglish(word).toLowerCase())) return quantity
-  const unitMatch = lower.match(/(\d+)\s*(ta|টা|pcs|piece|pieces|পিছ|পিস|nos|number|set|packet|pack|box)/i)
+  const unitMatch = lower.match(/(\d+)\s*(ta|à¦Ÿà¦¾|pcs|piece|pieces|à¦ªà¦¿à¦›|à¦ªà¦¿à¦¸|nos|number|set|packet|pack|box)/i)
   if (unitMatch) return Number(unitMatch[1])
   const xPrefix = lower.match(/x\s*(\d+)/i)
   if (xPrefix) return Number(xPrefix[1])
@@ -167,6 +212,7 @@ export function extractNotes(text = "") {
   }
   return null
 }
+
 
 
 

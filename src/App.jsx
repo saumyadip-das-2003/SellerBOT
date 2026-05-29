@@ -6,6 +6,7 @@ import Navbar from "./components/Navbar.jsx"
 import ProtectedRoute from "./components/ProtectedRoute.jsx"
 import { AuthProvider } from "./context/AuthContext.jsx"
 import Dashboard from "./pages/Dashboard.jsx"
+import DeliveryInventory from "./pages/DeliveryInventory.jsx"
 import DeliveryZones from "./pages/DeliveryZones.jsx"
 import Login from "./pages/Login.jsx"
 import NewOrder from "./pages/NewOrder.jsx"
@@ -44,6 +45,7 @@ function App() {
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/products" element={<Products />} />
               <Route path="/delivery-zones" element={<DeliveryZones />} />
+              <Route path="/delivery-inventory" element={<DeliveryInventory />} />
               <Route path="/shop-settings" element={<ShopSettings />} />
               <Route path="/new-order" element={<NewOrder />} />
               <Route path="/sales" element={<Sales />} />
@@ -58,3 +60,4 @@ function App() {
 }
 
 export default App
+
