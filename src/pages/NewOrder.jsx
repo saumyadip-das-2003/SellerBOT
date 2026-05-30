@@ -315,6 +315,7 @@ function NewOrder() {
 }
 
 function ChatStage({ chatText, chatType, loadingSteps, loadingMessage, onChatChange, onChatTypeChange, onParse }) {
+  const { t } = useTranslation()
   const isStructured = chatType === "structured"
   const copyFormat = async () => {
     await navigator.clipboard.writeText(`${banglaTemplate}\n\n--- ENGLISH ---\n\n${englishTemplate}\n\n--- BANGLISH ---\n\n${banglishTemplate}`)
@@ -331,6 +332,7 @@ function ChatTypeCard({ active, badge, badgeClass, color, desc, icon: Icon, titl
 
 function LoadingSteps({ steps }) { return <div className="rounded-lg border border-slate-200 bg-white p-4"><div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">{steps.map((step) => <div key={step.label} className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium ${step.status === "done" ? "bg-emerald-50 text-emerald-800" : step.status === "current" ? "bg-slate-100 text-slate-900" : "bg-white text-slate-400"}`}>{step.status === "done" ? <Check className="h-4 w-4" /> : step.status === "current" ? <Loader2 className="h-4 w-4 animate-spin" /> : <span className="h-4 w-4 rounded-full border border-slate-300" />}{step.label}</div>)}</div></div> }
 function ReviewStage(props) {
+  const { t } = useTranslation()
   const {
     order,
     products,
