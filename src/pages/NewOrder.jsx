@@ -133,6 +133,7 @@ const onlineMethods = ["bKash", "Nagad", "Rocket", "Bank", "Other"]
 const deliveryMethods = ["bKash", "Nagad", "Rocket"]
 const structuredSteps = ["Reading structured chat...", "Matching products to catalog...", "Detecting delivery zone...", "Done!"]
 const unstructuredSteps = ["AI is reading the conversation...", "Extracting customer details...", "Matching products to your catalog...", "Detecting delivery zone...", "Done!"]
+const manualSteps = ["Loading products and zones...", "Opening manual invoice form...", "Done!"]
 
 function NewOrder() {
   const { currentUser } = useAuth()
