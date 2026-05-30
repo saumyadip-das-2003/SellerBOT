@@ -615,13 +615,13 @@ function Field({ label, name, value, onChange, type = "text", helper, ...props }
 
 function StockBadge({ stock }) {
   const value = Number(stock || 0)
-  const className = value === 0
+  const className = value <= 0
     ? "bg-red-50 text-red-800"
     : value <= 10
       ? "bg-yellow-50 text-yellow-800"
       : "bg-emerald-50 text-emerald-800"
-  const label = value === 0 ? "Out of Stock" : value <= 10 ? `Low Stock: ${value}` : `In Stock: ${value}`
-  const suffix = value === 0 ? " - Out" : value <= 10 ? " - Low" : ""
+  const label = value <= 0 ? "Out of Stock" : value <= 10 ? `Low Stock: ${value}` : `In Stock: ${value}`
+  const suffix = value <= 0 ? " - Out" : value <= 10 ? " - Low" : ""
   return <div className={`rounded-md px-3 py-2 text-sm font-semibold ${className}`}>{label}{suffix}</div>
 }
 

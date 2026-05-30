@@ -336,22 +336,18 @@ function NewOrder() {
   const removeProductRow = (index) => setOrder((current) => ({ ...current, products: current.products.filter((_, rowIndex) => rowIndex !== index) }))
 
   const handleGenerateInvoice = () => {
-    const warnings = order.products
-      .map((item) => {
-        const product = products.find((candidate) => candidate.id === item.productId)
-        return product && Number(product.stock || 0) < Number(item.quantity || 1)
-          ? `${item.productName} only has ${product.stock || 0} in stock but ${item.quantity || 1} ordered`
-          : null
-      })
-      .filter(Boolean)
-
-    warnings.forEach((message) => toast.error(message))
+    const stockProblems = getStockProblems(order.products, products)
+    if (stockProblems.length > 0) {
+      stockProblems.forEach((message) => toast.error(message))
+      toast.error("Fix stock quantities before generating invoice.")
+      return
+    }
     setStage(3)
   }
   const handlePDFDownload = async () => { const canvas = await html2canvas(invoiceRef.current, { scale: 2 }); const pdf = new jsPDF("p", "mm", "a4"); const width = pdf.internal.pageSize.getWidth(); pdf.addImage(canvas.toDataURL("image/png"), "PNG", 0, 0, width, (canvas.height * width) / canvas.width); pdf.save(`SellerBot-Invoice-${orderNumber}.pdf`) }
   const handleImageDownload = async () => { const canvas = await html2canvas(invoiceRef.current, { scale: 2 }); const link = document.createElement("a"); link.download = `SellerBot-Invoice-${orderNumber}.png`; link.href = canvas.toDataURL("image/png"); link.click() }
   const handlePrintInvoice = async () => { await printInvoiceElement(invoiceRef.current) }
-  const saveSale = async () => { try { setSaving(true); const confirmedOrder = { ...enrichedOrder, orderNumber, invoiceURL: "" }; const docRef = await addDoc(collection(db, "users", currentUser.uid, "orders"), { ...confirmedOrder, createdAt: serverTimestamp() }); const inventoryResult = await moveToDeliveryInventory(currentUser.uid, { ...confirmedOrder, id: docRef.id }); if (inventoryResult.success) toast.success("Order saved! Stock updated."); else { toast.success("Order saved!"); toast.error("Stock update failed - check inventory."); } navigate("/orders") } catch (error) { toast.error(error.message || "Could not save order.") } finally { setSaving(false) } }
+  const saveSale = async () => { try { setSaving(true); const localProblems = getStockProblems(order.products, products); if (localProblems.length > 0) { localProblems.forEach((message) => toast.error(message)); return; } const freshProblems = await getFreshStockProblems(currentUser.uid, order.products); if (freshProblems.length > 0) { freshProblems.forEach((message) => toast.error(message)); toast.error("Order not saved. Stock is insufficient."); return; } const confirmedOrder = { ...enrichedOrder, orderNumber, invoiceURL: "" }; const docRef = await addDoc(collection(db, "users", currentUser.uid, "orders"), { ...confirmedOrder, createdAt: serverTimestamp() }); const inventoryResult = await moveToDeliveryInventory(currentUser.uid, { ...confirmedOrder, id: docRef.id }); if (inventoryResult.success) toast.success("Order saved! Stock updated."); else { toast.error(inventoryResult.error || "Stock update failed - order was not moved to delivery inventory."); } navigate("/orders") } catch (error) { toast.error(error.message || "Could not save order.") } finally { setSaving(false) } }
 
   if (stage === 1) return <ChatStage chatText={chatText} chatType={chatType} loadingSteps={loadingSteps} loadingMessage={loadingMessage} onChatChange={setChatText} onChatTypeChange={setChatType} onParse={handleParseChat} />
   if (stage === 2) return <ReviewStage order={order} products={products} zones={zones} subtotal={subtotal} grandTotal={grandTotal} paymentAmounts={paymentAmounts} parsedBy={parsedBy} onAddProduct={addProductRow} onBack={() => setStage(1)} onGenerate={handleGenerateInvoice} onProductRemove={removeProductRow} onProductUpdate={updateProductRow} onUpdate={updateOrder} onZoneChange={updateZone} />
@@ -453,6 +449,31 @@ function Input({ label, value, onChange, type = "text" }) { return <label classN
 function Textarea({ label, value, onChange }) { return <label className="block"><span className="text-sm font-medium">{label}</span><textarea className="mt-2 min-h-24 w-full rounded-md border border-slate-300 px-3 py-2" value={value} onChange={(e) => onChange(e.target.value)} /></label> }
 function Select({ label, value, options, onChange }) { return <label className="block"><span className="text-sm font-medium">{label}</span><select className="mt-2 h-11 w-full rounded-md border border-slate-300 px-3" value={value} onChange={(e) => onChange(e.target.value)}>{options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select></label> }
 function SummaryLine({ label, value }) { return <p className="flex justify-between text-sm"><span>{label}</span><span className="font-semibold">৳{value}</span></p> }
+function getStockProblems(orderProducts = [], catalog = []) {
+  return orderProducts
+    .map((item) => {
+      if (!item.productId) return null
+      const product = catalog.find((candidate) => candidate.id === item.productId)
+      if (!product) return null
+      const available = Number(product.stock || 0)
+      const requested = Number(item.quantity || 1)
+      return available < requested ? (item.productName || product.name || "Product") + " only has " + Math.max(0, available) + " in stock but " + requested + " ordered." : null
+    })
+    .filter(Boolean)
+}
+
+async function getFreshStockProblems(uid, orderProducts = []) {
+  const checks = await Promise.all(orderProducts.map(async (item) => {
+    if (!item.productId) return null
+    const snap = await getDoc(doc(db, "users", uid, "products", item.productId))
+    if (!snap.exists()) return null
+    const product = snap.data()
+    const available = Number(product.stock || 0)
+    const requested = Number(item.quantity || 1)
+    return available < requested ? (item.productName || product.name || "Product") + " only has " + Math.max(0, available) + " in stock but " + requested + " ordered." : null
+  }))
+  return checks.filter(Boolean)
+}
 async function fetchSellerData(uid) { const [productsSnapshot, zonesSnapshot, shopSnapshot] = await Promise.all([getDocs(collection(db, "users", uid, "products")), getDocs(collection(db, "users", uid, "deliveryZones")), getDoc(doc(db, "users", uid, "settings", "shop"))]); return [productsSnapshot.docs.map((item) => ({ id: item.id, ...item.data() })), zonesSnapshot.docs.map((item) => ({ id: item.id, ...item.data() })), shopSnapshot.data() || {}] }
 function buildProductRow(name, quantity, catalog) { const match = fuzzyMatchSingle(name, catalog); return { productId: match?.id || "", productCode: match?.productCode || "", productName: match?.name || name || "", banglaName: match?.banglaName || "", quantity: Number(quantity || 1), unitPrice: match?.price || 0, costPrice: match?.costPrice || 0, totalPrice: (match?.price || 0) * Number(quantity || 1), matchedBy: match?.productCode && String(name || "").toUpperCase().includes(String(match.productCode).toUpperCase()) ? "productCode" : match ? "fuzzy" : "manual" } }
 function buildProductRowFromRag(pair, ragProducts, catalog) { const quantity = Number(pair.quantity || 1); const productName = String(pair.productName || "").toLowerCase(); const ragMatch = ragProducts.find((item) => item.similarity > 0.6 && (String(item.product_name || "").toLowerCase().includes(productName) || productName.includes(String(item.product_name || "").toLowerCase()))) || ragProducts[0]; if (!ragMatch) return buildProductRow(pair.productName, quantity, catalog); const unitPrice = Number(ragMatch.price || 0); return { productId: ragMatch.product_id || "", productCode: ragMatch.product_code || "", productName: ragMatch.product_name || pair.productName || "", banglaName: ragMatch.bangla_name || "", quantity, unitPrice, costPrice: Number(ragMatch.cost_price || 0), totalPrice: unitPrice * quantity, ragSimilarity: ragMatch.similarity || 0, matchedBy: "rag" } }
