@@ -1,7 +1,7 @@
 ﻿import { useEffect, useRef, useState } from "react"
 import { BarChart3, ChevronDown, ClipboardList, Languages, LogOut, MoreVertical, Moon, Package, PackageCheck, PlusCircle, Settings, Store, Sun, User, X } from "lucide-react"
 import toast from "react-hot-toast"
-import { NavLink, useNavigate } from "react-router-dom"
+import { NavLink, useLocation, useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { signOut } from "firebase/auth"
 import { collection, doc, getDoc, onSnapshot, query, where } from "firebase/firestore"
@@ -141,10 +141,15 @@ function Brand({ shop, currentUser, compact = false }) {
 }
 
 function NavItems({ onNavigate, counts, t }) {
+  const location = useLocation()
+  const isNewOrderActive = location.pathname === "/new-order"
   return (
     <nav className="flex flex-col gap-2">
       {navItems.map((item) => {
         const Icon = item.icon
+        if (item.to === "/new-order") {
+          return <div key={item.to} className={`rounded-2xl ${isNewOrderActive ? "bg-[var(--primary-light)]" : ""}`}><NavLink to="/new-order?mode=chat" onClick={onNavigate} className={() => `sidebar-link ${isNewOrderActive ? "active" : ""}`}><span><Icon className="h-5 w-5" /></span><span>{t(`nav.${item.key}`)}</span><ChevronDown className="ml-auto h-4 w-4" /></NavLink><div className="ml-8 mt-1 flex flex-col gap-1 pb-2 pr-2"><NavLink to="/new-order?mode=chat" onClick={onNavigate} className={({ isActive }) => `rounded-lg px-3 py-2 text-xs font-bold ${isActive && location.search !== "?mode=manual" ? "bg-[#1D9E75] text-white" : "text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)]"}`}>Chat to Invoice</NavLink><NavLink to="/new-order?mode=manual" onClick={onNavigate} className={() => `rounded-lg px-3 py-2 text-xs font-bold ${location.pathname === "/new-order" && location.search === "?mode=manual" ? "bg-purple-600 text-white" : "text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)]"}`}>Manual Invoice</NavLink></div></div>
+        }
         return (
           <NavLink key={item.to} to={item.to} onClick={onNavigate} className={({ isActive }) => `sidebar-link ${isActive ? "active" : ""}`}>
             <span className="relative"><Icon className="h-5 w-5" />{item.to === "/delivery-inventory" && counts.pendingDeliveryCount > 0 && <Badge>{counts.pendingDeliveryCount}</Badge>}{item.to === "/products" && counts.lowStockCount > 0 && <Dot />}</span>
