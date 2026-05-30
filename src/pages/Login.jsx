@@ -58,7 +58,7 @@ function Login() {
             {["Bangla, English and Banglish parsing", "RAG powered product search", "PDF, image and print invoices"].map((item) => <p key={item} className="glass rounded-xl px-4 py-3"><Zap className="mr-2 inline h-4 w-4 text-emerald-300" />{item}</p>)}
           </div>
         </div>
-        <p className="relative z-10 text-sm text-slate-400">Built for Bangladeshi Facebook and WhatsApp sellers.</p>
+        <div className="relative z-10 space-y-1 text-sm text-slate-400"><p>Built for Bangladeshi Facebook and WhatsApp sellers.</p><p className="font-semibold text-emerald-200">Developed by Team ParityCode.</p></div>
       </section>
 
       <section className="relative z-10 flex min-h-screen items-center justify-center px-4 py-10">
@@ -87,7 +87,9 @@ function Login() {
           <div className="my-6 flex items-center gap-3 text-xs font-semibold uppercase" style={{ color: "var(--text-tertiary)" }}><span className="h-px flex-1 bg-[var(--border)]" />or<span className="h-px flex-1 bg-[var(--border)]" /></div>
           <Link className="btn-outline btn-full" to="/register">{t("auth.register")}</Link>
 
-          <div className="mt-6 flex justify-center gap-2">
+          <p className="mt-6 text-center text-xs font-semibold" style={{ color: "var(--text-tertiary)" }}>Developed by Team ParityCode.</p>
+
+          <div className="mt-4 flex justify-center gap-2">
             <button className="btn-secondary btn-sm" type="button" onClick={toggleLanguage}>{language === "en" ? "বাংলা" : "English"}</button>
             <button className="btn-secondary btn-sm" type="button" onClick={toggleTheme}>{theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}{theme === "dark" ? t("common.lightMode") : t("common.darkMode")}</button>
           </div>
