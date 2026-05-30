@@ -174,6 +174,7 @@ function ProfileMenu({ refEl, open, setOpen, shop, currentUser, theme, language,
         <div className="profile-menu">
           <button className="profile-menu-item" type="button" onClick={() => { setOpen(false); navigate("/shop-settings") }}><User className="h-4 w-4" />Profile</button>
           <button className="profile-menu-item" type="button" onClick={() => { setOpen(false); navigate("/ai-usage") }}><Activity className="h-4 w-4" />AI Token Usage</button>
+          <button className="profile-menu-item" type="button" onClick={() => { setOpen(false); navigate("/delivery-zones") }}><Settings className="h-4 w-4" />Delivery Zones</button>
           <button className="profile-menu-item" type="button" onClick={toggleTheme}>{theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}{theme === "dark" ? t("common.lightMode") : t("common.darkMode")}</button>
           <button className="profile-menu-item" type="button" onClick={toggleLanguage}><Languages className="h-4 w-4" />{language === "en" ? "Bangla" : "English"}</button>
           <div className="my-1 h-px bg-[var(--border)]" />
