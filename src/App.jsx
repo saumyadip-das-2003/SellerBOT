@@ -8,6 +8,7 @@ import { AuthProvider } from "./context/AuthContext.jsx"
 import { LanguageProvider } from "./context/LanguageContext.jsx"
 import { ThemeProvider } from "./context/ThemeContext.jsx"
 import Dashboard from "./pages/Dashboard.jsx"
+import AIUsage from "./pages/AIUsage.jsx"
 import DeliveryInventory from "./pages/DeliveryInventory.jsx"
 import DeliveryZones from "./pages/DeliveryZones.jsx"
 import Login from "./pages/Login.jsx"
@@ -55,6 +56,7 @@ function App() {
                   <Route path="/new-order" element={<NewOrder />} />
                   <Route path="/orders" element={<Orders />} />
                   <Route path="/sales" element={<Sales />} />
+                  <Route path="/ai-usage" element={<AIUsage />} />
                 </Route>
               </Routes>
               <InstallPrompt />

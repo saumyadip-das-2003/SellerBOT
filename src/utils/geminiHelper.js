@@ -1,4 +1,5 @@
-﻿export async function convertToStructured(chatText, productCatalog = [], zones = [], ragProducts = [], ragZones = []) {
+import { updateGroqUsageFromHeaders } from "./aiUsage.js"
+﻿export async function convertToStructured(chatText, productCatalog = [], zones = [], ragProducts = [], ragZones = [], aiConfig = {}) {
   const productList = ragProducts.length > 0
     ? ragProducts.map((p) => `${p.product_name}${p.bangla_name ? "/" + p.bangla_name : ""} (৳${p.price}) [${Math.round((p.similarity || 0) * 100)}% match]`).join(", ")
     : productCatalog.slice(0, 15).map((p) => `${p.name}${p.banglaName ? "/" + p.banglaName : ""} (৳${p.price})`).join(", ")
@@ -102,11 +103,11 @@ Use null when a field is missing.
 }
 `
   const fallback = convertBanglishFallback(chatText, productCatalog, zones)
-  const parsed = await convertJsonWithGroq(prompt)
+  const parsed = await convertJsonWithGroq(prompt, aiConfig)
   return hasUsefulExtraction(parsed) ? mergeWithFallback(parsed, fallback) : fallback
 }
 
-export async function convertToStructuredText(chatText, productCatalog = [], zones = [], ragProducts = [], ragZones = []) {
+export async function convertToStructuredText(chatText, productCatalog = [], zones = [], ragProducts = [], ragZones = [], aiConfig = {}) {
   const localFallback = structuredTextFromFallback(convertBanglishFallback(chatText, productCatalog, zones))
 
   const productList = ragProducts.length > 0
@@ -214,12 +215,12 @@ ${chatText}
 
 Return only the structured text. No markdown. No JSON.
 `
-  const groqText = await convertWithGroq(prompt)
+  const groqText = await convertWithGroq(prompt, aiConfig)
   return groqText || localFallback
 }
 
-async function convertWithGroq(prompt) {
-  const apiKey = import.meta.env.VITE_GROQ_API_KEY
+async function convertWithGroq(prompt, aiConfig = {}) {
+  const apiKey = aiConfig.groqApiKey || import.meta.env.VITE_GROQ_API_KEY
   if (!apiKey) {
     return null
   }
@@ -232,7 +233,7 @@ async function convertWithGroq(prompt) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: import.meta.env.VITE_GROQ_MODEL || "openai/gpt-oss-20b",
+        model: aiConfig.groqModel || import.meta.env.VITE_GROQ_MODEL || "openai/gpt-oss-20b",
         messages: [
           {
             role: "system",
@@ -241,7 +242,7 @@ async function convertWithGroq(prompt) {
           { role: "user", content: prompt },
         ],
         temperature: 0.1,
-        max_completion_tokens: 800,
+        max_completion_tokens: Number(aiConfig.maxTokens || import.meta.env.VITE_GROQ_MAX_COMPLETION_TOKENS || 800),
       }),
     })
 
@@ -251,6 +252,7 @@ async function convertWithGroq(prompt) {
       return null
     }
 
+    updateGroqUsageFromHeaders(response.headers, aiConfig.groqModel || import.meta.env.VITE_GROQ_MODEL || "openai/gpt-oss-20b")
     const data = await response.json()
     return cleanStructuredText(data.choices?.[0]?.message?.content || "")
   } catch (error) {
@@ -259,8 +261,8 @@ async function convertWithGroq(prompt) {
   }
 }
 
-async function convertJsonWithGroq(prompt) {
-  const text = await convertWithGroq(`${prompt}\n\nReturn only valid JSON.`)
+async function convertJsonWithGroq(prompt, aiConfig = {}) {
+  const text = await convertWithGroq(`${prompt}\n\nReturn only valid JSON.`, aiConfig)
   return text ? parseJsonResponse(text) : null
 }
 function structuredTextFromFallback(result) {

@@ -16,6 +16,7 @@ import { parseChat, parseProductQuantityPairs } from "../utils/parser.js"
 import { moveToDeliveryInventory } from "../utils/inventoryManager.js"
 import { printInvoiceElement } from "../utils/printInvoice.js"
 import { searchProductsByVector, searchZonesByVector } from "../utils/ragOperations.js"
+import { getAISettings } from "../utils/aiUsage.js"
 import { detectZone } from "../utils/zoneDetector.js"
 
 const banglaTemplate = `\u0986\u09ae\u09be\u09a6\u09c7\u09b0 \u0995\u09be\u099b\u09c7 \u0985\u09b0\u09cd\u09a1\u09be\u09b0 \u0995\u09b0\u09a4\u09c7 \u09a8\u09bf\u099a\u09c7\u09b0 \u09ab\u09b0\u09ae\u09cd\u09af\u09be\u099f\u09c7 \u09ae\u09c7\u09b8\u09c7\u099c \u0995\u09b0\u09c1\u09a8:
@@ -242,8 +243,10 @@ function NewOrder() {
           if (ragProducts.length > 0) parsedResult.parsedBy = "regex+rag"
         }
       } else {
-        if (!import.meta.env.VITE_GROQ_API_KEY) {
-          toast.error("AI parsing is not configured. Please contact support.")
+        const aiSettings = await getAISettings(currentUser.uid)
+        const groqApiKey = aiSettings.groqApiKey || import.meta.env.VITE_GROQ_API_KEY
+        if (!groqApiKey) {
+          toast.error("AI parsing is not configured. Add your Groq API key in AI Token Usage.")
           return
         }
 
@@ -252,7 +255,7 @@ function NewOrder() {
           searchProductsByVector(currentUser.uid, chatText, 8),
           searchZonesByVector(currentUser.uid, chatText, 3),
         ])
-        const structuredText = await convertToStructuredText(chatText, loadedProducts, loadedZones, ragProducts, ragZones)
+        const structuredText = await convertToStructuredText(chatText, loadedProducts, loadedZones, ragProducts, ragZones, { ...aiSettings, groqApiKey })
         if (!structuredText) {
           toast.error("AI could not format this chat. Try Structured mode or paste a clearer message.")
           return

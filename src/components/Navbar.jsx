@@ -1,5 +1,5 @@
 ﻿import { useEffect, useRef, useState } from "react"
-import { BarChart3, ChevronDown, ClipboardList, Languages, LogOut, MoreVertical, Moon, Package, PackageCheck, PlusCircle, Settings, Store, Sun, User, X } from "lucide-react"
+import { Activity, BarChart3, ChevronDown, ClipboardList, Languages, LogOut, MoreVertical, Moon, Package, PackageCheck, PlusCircle, Settings, Store, Sun, User, X } from "lucide-react"
 import toast from "react-hot-toast"
 import { NavLink, useLocation, useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
@@ -173,6 +173,7 @@ function ProfileMenu({ refEl, open, setOpen, shop, currentUser, theme, language,
       {open && (
         <div className="profile-menu">
           <button className="profile-menu-item" type="button" onClick={() => { setOpen(false); navigate("/shop-settings") }}><User className="h-4 w-4" />Profile</button>
+          <button className="profile-menu-item" type="button" onClick={() => { setOpen(false); navigate("/ai-usage") }}><Activity className="h-4 w-4" />AI Token Usage</button>
           <button className="profile-menu-item" type="button" onClick={toggleTheme}>{theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}{theme === "dark" ? t("common.lightMode") : t("common.darkMode")}</button>
           <button className="profile-menu-item" type="button" onClick={toggleLanguage}><Languages className="h-4 w-4" />{language === "en" ? "Bangla" : "English"}</button>
           <div className="my-1 h-px bg-[var(--border)]" />
