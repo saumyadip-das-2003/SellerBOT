@@ -10,7 +10,7 @@ const DOCS_CONFIG_KEY = "sellerbot-docs-config"
 const DEFAULT_CONFIG = {
   enabled: true,
   startAt: "2026-06-10T00:00",
-  endAt: "2026-06-14T23:59",
+  endAt: "2099-12-31T23:59",
   teamName: "Team ParityCode",
 }
 
@@ -90,11 +90,7 @@ function Docs() {
     .filter(Boolean)
   const isAdmin = Boolean(currentUser?.email) && (adminEmails.length === 0 || adminEmails.includes(currentUser.email.toLowerCase()))
 
-  const now = new Date()
-  const starts = new Date(config.startAt)
-  const ends = new Date(config.endAt)
-  const inWindow = now >= starts && now <= ends
-  const visible = preview || (config.enabled && inWindow)
+  const visible = preview || config.enabled
 
   useEffect(() => {
     if (!currentUser?.uid) {
@@ -222,7 +218,7 @@ function DocsUnavailable({ config, isAdmin, draft, setDraft, saveConfig, applyDu
         <div className="docs-lock"><Lock className="h-8 w-8" /></div>
         <p className="docs-kicker">Restricted showcase window</p>
         <h1>Documentation Not Available</h1>
-        <p>The SellerBot live documentation is currently closed. Public access is scheduled from {formatWindowDate(config.startAt)} to {formatWindowDate(config.endAt)}.</p>
+        <p>The SellerBot live documentation is currently closed by admin controls.</p>
         <Link className="btn-secondary" to="/login">Back to SellerBot</Link>
       </section>
       {isAdmin && <AdminPanel draft={draft} setDraft={setDraft} saveConfig={saveConfig} applyDuration={applyDuration} compact />}
@@ -237,7 +233,7 @@ function LiveSystemCard({ live, config }) {
     ["Delivery zones", live.zones],
     ["Delivery items", live.deliveries],
   ]
-  return <aside className="docs-live-card"><p className="docs-kicker"><Zap className="h-4 w-4" />Live system view</p><div className="docs-metric-grid">{metrics.map(([label, value]) => <div key={label}><strong>{live.loading ? "..." : value}</strong><span>{label}</span></div>)}</div><p className="docs-window"><CalendarClock className="h-4 w-4" />Public window: {formatWindowDate(config.startAt)} - {formatWindowDate(config.endAt)}</p></aside>
+  return <aside className="docs-live-card"><p className="docs-kicker"><Zap className="h-4 w-4" />Live system view</p><div className="docs-metric-grid">{metrics.map(([label, value]) => <div key={label}><strong>{live.loading ? "..." : value}</strong><span>{label}</span></div>)}</div><p className="docs-window"><CalendarClock className="h-4 w-4" />Public access: Always live</p></aside>
 }
 
 function FeatureMatrix() {
@@ -253,7 +249,7 @@ function InfoSection({ section }) {
 }
 
 function AdminPanel({ draft, setDraft, saveConfig, applyDuration, compact = false }) {
-  return <section id="admin" className={compact ? "docs-admin docs-admin-compact" : "docs-section docs-admin"}><div className="docs-section-head"><p>Admin publishing</p><h2>Visibility & Scheduling</h2></div><div className="docs-admin-grid"><label className="docs-toggle"><input type="checkbox" checked={draft.enabled} onChange={(event) => setDraft((prev) => ({ ...prev, enabled: event.target.checked }))} />{draft.enabled ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}Public visibility</label><label><span>Start date and time</span><input type="datetime-local" value={draft.startAt} onChange={(event) => setDraft((prev) => ({ ...prev, startAt: event.target.value }))} /></label><label><span>End date and time</span><input type="datetime-local" value={draft.endAt} onChange={(event) => setDraft((prev) => ({ ...prev, endAt: event.target.value }))} /></label><label><span>Team name</span><input value={draft.teamName} onChange={(event) => setDraft((prev) => ({ ...prev, teamName: event.target.value }))} /></label></div><div className="docs-admin-actions"><button className="btn-secondary" type="button" onClick={() => applyDuration(24)}>Publish 24h</button><button className="btn-secondary" type="button" onClick={() => applyDuration(96)}>Publish 4 days</button><button className="btn-primary" type="button" onClick={saveConfig}>Save Publishing Settings</button></div><p className="docs-admin-note"><Shield className="h-4 w-4" />Prototype admin controls are stored locally for the hackathon demo. A production version should persist this config in an admin-only Firestore document.</p></section>
+  return <section id="admin" className={compact ? "docs-admin docs-admin-compact" : "docs-section docs-admin"}><div className="docs-section-head"><p>Admin publishing</p><h2>Visibility & Scheduling</h2></div><div className="docs-admin-grid"><label className="docs-toggle"><input type="checkbox" checked={draft.enabled} onChange={(event) => setDraft((prev) => ({ ...prev, enabled: event.target.checked }))} />{draft.enabled ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}Public visibility</label><label><span>Start date and time (optional)</span><input type="datetime-local" value={draft.startAt} onChange={(event) => setDraft((prev) => ({ ...prev, startAt: event.target.value }))} /></label><label><span>End date and time (optional)</span><input type="datetime-local" value={draft.endAt} onChange={(event) => setDraft((prev) => ({ ...prev, endAt: event.target.value }))} /></label><label><span>Team name</span><input value={draft.teamName} onChange={(event) => setDraft((prev) => ({ ...prev, teamName: event.target.value }))} /></label></div><div className="docs-admin-actions"><button className="btn-secondary" type="button" onClick={() => applyDuration(24)}>Publish 24h</button><button className="btn-secondary" type="button" onClick={() => applyDuration(96)}>Publish 4 days</button><button className="btn-primary" type="button" onClick={saveConfig}>Save Publishing Settings</button></div><p className="docs-admin-note"><Shield className="h-4 w-4" />Prototype admin controls are stored locally for the hackathon demo. A production version should persist this config in an admin-only Firestore document.</p></section>
 }
 
 function buildSections(live) {
